@@ -102,36 +102,9 @@ ibool = IntegerType 1
 fn :: Type -> [Type] -> Type
 fn retty argty = FunctionType retty argty False
 
--- | like a @void*@ in C
---
--- (used for malloc and closure environment)
-anyPtr :: Type
-anyPtr = ptr i8
-
 -- | function pointer
 fnPtr :: Type -> [Type] -> Type
 fnPtr retty argty = ptr $ fn retty argty
-
--- | closure struct
---
--- holds pointer to the global function
--- and a pointer (@void*@) to the environment
-closure :: Type -> [Type] -> Type
-closure retty argty =
-  StructureType
-  { isPacked = False
-  , elementTypes = [ fnPtr retty (anyPtr:argty), anyPtr ]
-  }
-
--- | actual type of a closure environment
---
--- a struct that holds each captured value
-closureEnv :: [Type] -> Type
-closureEnv elemty =
-  StructureType
-  { isPacked = False
-  , elementTypes = elemty
-  }
 
 -------------------------------------------------------------------------------
 -- Constants
@@ -145,16 +118,6 @@ zero = cons $ C.Int 32 0
 
 false = cons $ C.Int 1 0
 true = cons $ C.Int 1 1
-
--- undefined value
---
--- (used for building a structure)
-undef ty = cons (C.Undef ty)
-
--- null pointer
---
--- (used for closures without capture)
-nullP ty = cons (C.Null ty)
 
 -------------------------------------------------------------------------------
 -- Names
@@ -368,17 +331,6 @@ bitcast ty a = instr ty $ BitCast a ty []
 ptrtoint :: Type -> Operand -> Codegen Operand
 ptrtoint ty a = instr ty $ PtrToInt a ty []
 
--- | Calculate the byte size of a type
---
--- uses a pointer arithmetic trick:
---
--- getting the pointer to the second element of an array
--- starting at address zero is identical to getting an element's size.
-sizeof :: Type -> Codegen Operand
-sizeof ty = do
-  sizeP <- getElementPtr (ptr ty) (nullP (ptr ty)) [one]
-  ptrtoint int sizeP
-
 -- Effects
 
 -- | call according to C calling convention
@@ -395,44 +347,17 @@ call ty fn args = instr ty $ Call Nothing CC.Fast [] (Right fn) (toArgs args) []
 alloca :: Type -> Codegen Operand
 alloca ty = instr ty $ Alloca ty Nothing 0 []
 
--- | allocate space on the heap
-malloc :: Type -> Codegen (Operand, Operand)
-malloc ty = do
-  size <- sizeof ty
-  anyP <- ccall anyPtr (cons $ global (fn anyPtr [i32]) "malloc") [size]
-  valP <- bitcast (ptr ty) anyP
-  pure (anyP, valP)
-
 store :: Operand -> Operand -> Codegen Operand
 store dst val = instr void $ Store False dst val Nothing 0 []
 
 load :: Type -> Operand -> Codegen Operand
 load ty ptr = instr ty $ Load False ptr Nothing 0 []
 
--- | pointer arithmetic
---
--- first index is like an array index:
---   @int*@ could refer to an array of integers
--- further indices index into structure elements
-getElementPtr :: Type -> Operand -> [Operand] -> Codegen Operand
-getElementPtr ty addr idx = instr ty $ GetElementPtr False addr idx []
-
--- | get the environment pointer (with correct type) out of a closure
-getClosureEnvPtr :: AST.Name -> [Type] -> Codegen Operand
-getClosureEnvPtr envName elemty = do
-  let envPtr = local anyPtr envName
-  bitcast (ptr $ closureEnv elemty) envPtr
-
 extractValue :: Type -> Operand -> [Word32] -> Codegen Operand
 extractValue ty struct idx = instr ty $ ExtractValue struct idx []
 
 insertValue :: Type -> Operand -> Operand -> [Word32] -> Codegen Operand
 insertValue ty struct val idx = instr ty $ InsertValue struct val idx []
-
-buildStruct :: Type -> [Operand] -> Codegen Operand
-buildStruct ty elems = foldM insert (undef ty) (zip [0..] elems)
-  where
-    insert struct (i, val) = insertValue ty struct val [i]
 
 -- Control Flow
 br :: Name -> Codegen (Named Terminator)

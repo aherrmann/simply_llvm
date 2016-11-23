@@ -94,24 +94,6 @@ deffun name args retty body =
     tell $ DList.singleton (IR.DefFunction name args retty body)
 
 
--- | add a global closure definition
-defclosure :: Name -> [IR.Arg] -> [IR.Arg] -> IR.Type -> IR.Expr -> Transform ()
-defclosure name env args retty body =
-    tell $ DList.singleton (IR.DefClosure name env args retty body)
-
-
--- | Lift an expression that expects the given arguments
--- and produces the given result type to a closure.
--- Capture all free local variables in the expression.
-liftClosure :: [IR.Arg] -> IR.Type -> IR.Expr -> Transform IR.Expr
-liftClosure args retty body = do
-    name <- freshname "__closure_"
-    let env = Map.toList $ IR.freeVars body Map.\\ Map.fromList args
-        capture = map (uncurry $ flip IR.LVar) env
-    defclosure name env args retty body
-    pure $! IR.MakeClosure (IR.TClosure (map snd args) retty) name capture
-
-
 ----------------------------------------------------------------------
 -- Transformations
 
@@ -120,56 +102,6 @@ transfType :: Type -> IR.Type
 transfType = \case
     TInt -> IR.TInt
     TBool -> IR.TBool
-    ty@(TArr _ _) ->
-      let (argtys, retty) = unfoldTArr ty
-      in  IR.TClosure (map transfType argtys) (transfType retty)
-
-
--- | Find a common type between two types that both types can be converted to.
---
--- E.g. a function without arguments can be converted to its result type.
---
--- The function is partial and fails if there is no common type. (Sorry)
-promoteType :: IR.Type -> IR.Type -> IR.Type
-promoteType a b =
-    case (a, b) of
-      (IR.TFunction [] r, _) | b == r -> r
-      (IR.TClosure [] r, _) | b == r -> r
-      (_, IR.TFunction [] r) | a == r -> r
-      (_, IR.TClosure [] r) | a == r -> r
-      _ | a == b -> a
-        | otherwise -> panic "Invalid type promotion"
-
-
--- | Convert (if necessary) two expressions to their common type.
---
--- See 'promoteType'.
---
--- The function is partial and fails if there is no common type.
-promote :: IR.Expr -> IR.Expr -> Transform (IR.Expr, IR.Expr)
-promote a b = (,) <$> convert ty a <*> convert ty b
-  where
-    ty = promoteType (IR.exprType a) (IR.exprType b)
-
-
--- | Convert an expression to the given type.
---
--- The function is partial and fails if the conversion is illegal.
-convert :: IR.Type -> IR.Expr -> Transform IR.Expr
-convert ty expr =
-    let ety = IR.exprType expr in
-    case ety of
-      -- Functions or closures without arguments
-      -- can be implicitly converted to their return types
-      -- by calling them.
-      IR.TFunction [] retty | retty == ty -> call expr []
-      IR.TClosure [] retty | retty == ty -> call expr []
-      -- A function pointer can be converted to a closure
-      -- as a partial application with zero arguments.
-      IR.TFunction argtys retty | IR.TClosure argtys retty == ty ->
-        partialCall expr []
-      ty' | ty' == ty -> pure $! expr
-      _ -> panic "Invalid convert"
 
 
 -- | Assert that an expression has a certain type.
@@ -206,8 +138,9 @@ transfExpr = \case
     pure $! IR.Let inty name e' ein'
 
   If cond th el -> do
-    cond' <- convert IR.TBool =<< transfExpr cond
-    (th', el') <- join $ promote <$> transfExpr th <*> transfExpr el
+    cond' <- transfExpr cond
+    th' <- transfExpr th
+    el' <- transfExpr el
     pure $! IR.If (IR.exprType th') cond' th' el'
 
   Prim prim -> do
@@ -227,33 +160,17 @@ transfExpr = \case
         join $ call <$> transfExpr f <*> traverse transfExpr args
       (Prim prim, [a, b]) -> do
         let retty = if prim == Eql then IR.TBool else IR.TInt
-        a' <- convert IR.TInt =<< transfExpr a
-        b' <- convert IR.TInt =<< transfExpr b
+        a' <- transfExpr a
+        b' <- transfExpr b
         pure $! IR.Prim retty prim [a', b']
-      (Prim prim, [a]) -> do
-        let retty = if prim == Eql then IR.TBool else IR.TInt
-        a' <- convert IR.TInt =<< transfExpr a
-        liftClosure [("b", IR.TInt)] retty
-            (IR.Prim retty prim [a', IR.LVar IR.TInt "b"])
-      (lam@(Lam _ _), args) -> do
-        f' <- transfExpr lam
-        args' <- traverse transfExpr args
-        call f' args'
       (f, args) ->
         join $ call <$> transfExpr f <*> traverse transfExpr args
-
-  lam@(Lam args body) -> do
-    let args' = map (second transfType) args
-    body' <- addLocalCtx args' $ transfExpr body
-    let retty = IR.exprType body'
-    liftClosure args' retty body'
 
 
 -- | Call an IR expression
 --
 -- Must either be a variable referring to
--- a global function, a local function, or a closure;
--- or a closure expression.
+-- a global function, a local function.
 --
 -- The function is partial and fails if its pre-condition is violated.
 call :: IR.Expr -> [IR.Expr] -> Transform IR.Expr
@@ -263,44 +180,14 @@ call f args = do
         retty = IR.returnType fty
         numargs = IR.numArgs fty
         numpassed = length args
-    args' <- zipWithM convert argtys args
     case compare numargs numpassed of
       EQ ->
         -- saturated call
         case f of
           IR.GVar (IR.TFunction _ _) name ->
-            pure $! IR.CallFunction retty name args'
+            pure $! IR.CallFunction retty name args
           IR.LVar (IR.TFunction _ _) name ->
             panic "Can only call global functions!"
-          _ ->
-            pure $! IR.CallClosure retty f args'
-      LT -> do
-        -- over saturated call - the call will itself return a function
-        f' <- call f (take numargs args)
-        call f' (drop numargs args)
-      GT ->
-        -- under saturated call - create a closure which will complete the call
-        partialCall f args
-
-
--- | handle a partial function application
--- by creating a closure that expects the remaining arguments
-partialCall :: IR.Expr -> [IR.Expr] -> Transform IR.Expr
-partialCall fun args = do
-
-    let funty = IR.exprType fun
-        argtys = IR.argTypes funty
-        retty = IR.returnType funty
-        passed = length args
-        missing = length argtys - passed
-
-    args' <- zipWithM convert argtys args
-    argnames <- replicateM missing (freshname "__arg_")
-
-    let clargs = zip argnames $ drop passed argtys
-        clexprs = map (uncurry $ flip IR.LVar) clargs
-
-    join $! liftClosure clargs retty <$> call fun (args' ++ clexprs)
 
 
 -- | transform a functions body in "Simply" to IR
@@ -308,7 +195,7 @@ partialCall fun args = do
 -- return type.
 transfBody :: [IR.Arg] -> IR.Type -> Expr -> Transform IR.Expr
 transfBody args' retty' body =
-    addLocalCtx args' $ convert retty' =<< transfExpr body
+    addLocalCtx args' $ transfExpr body
 
 
 -- | transform a global binding in "Simply" to IR

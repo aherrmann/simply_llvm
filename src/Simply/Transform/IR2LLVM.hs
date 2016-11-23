@@ -41,7 +41,6 @@ llvmType :: IR.Type -> AST.Type
 llvmType TInt = int
 llvmType TBool = ibool
 llvmType (TFunction args ret) = fn (llvmType ret) (map llvmType args)
-llvmType (TClosure args ret) = closure (llvmType ret) (map llvmType args)
 
 
 -- | Transform an IR expression to LLVM.
@@ -112,39 +111,6 @@ codegenExpr expr = case expr of
     args' <- traverse codegenExpr args
     call (llvmType retTy) (externf funTy (AST.Name (toS name))) args'
 
-  MakeClosure (TClosure argtys retty) name env -> do
-    envptr' <-
-        if null env then
-            pure $! nullP anyPtr
-        else do
-            let envtys' = map (llvmType . exprType) env
-            env' <- traverse codegenExpr env
-            (anyptr, envptr) <- malloc (closureEnv envtys')
-            forM_ (zip3 [0..] envtys' env') $ \(i, ty, v) -> do
-                p <- getElementPtr (ptr ty) envptr [cint32 0, cint32 i]
-                store p v
-            pure $! anyptr
-    let retty' = llvmType retty
-        argtys' = map llvmType argtys
-        closurety = closure retty' argtys'
-        funty = fn retty' (anyPtr : argtys')
-        name' = AST.Name $ toS name
-    buildStruct closurety [cons $ global funty name', envptr']
-
-  CallClosure retty cl args -> do
-    let TClosure clargtys clretty = exprType cl
-    unless (clargtys == map exprType args)
-      $ panic "Argument type mismatch in call closure"
-    unless (retty == clretty)
-      $ panic "Return type mismatch in call closure"
-
-    let funty = fn (llvmType retty) (anyPtr : map (llvmType . exprType) args)
-    cl' <- codegenExpr cl
-    args' <- traverse codegenExpr args
-    funPtr <- extractValue funty cl' [0]
-    envPtr <- extractValue anyPtr cl' [1]
-    call (llvmType retty) funPtr (envPtr : args')
-
   _ -> panic $! "Invalid expression: " <> show expr 
 
 
@@ -156,23 +122,6 @@ codegenGlobal (DefFunction name args retty body) = do
   let args' = map (swap . first (AST.Name . toS) . second llvmType) args
       retty' = llvmType retty
   internal retty' (toS name) args' $
-    codegenBody args' body
-codegenGlobal (DefClosure name env args retty body) = do
-  let env' = map (swap . first (AST.Name . toS) . second llvmType) env
-      args' = map (swap . first (AST.Name . toS) . second llvmType) args
-      retty' = llvmType retty
-      envname = "__env"
-      envarg = (anyPtr, envname)
-  internal retty' (toS name) (envarg:args') $ do
-
-    -- extract closure environment
-    unless (null env) $ do
-      envptr <- getClosureEnvPtr envname (map fst env')
-      forM_ (zip [0..] env') $ \(i, (ty, AST.Name name)) -> do
-          p <- getElementPtr (ptr ty) envptr [cint32 0, cint32 i]
-          v <- load ty p
-          assign (toS name) v
-
     codegenBody args' body
 
 

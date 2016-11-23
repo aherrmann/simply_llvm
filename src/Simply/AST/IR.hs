@@ -46,9 +46,6 @@ data Type
     -- ^ boolean type
   | TFunction [Type] Type
     -- ^ type of a global function
-
-  | TClosure [Type] Type
-    -- ^ type of a closure
   deriving (Show, Eq, Ord, Generic)
 
 
@@ -79,11 +76,6 @@ data Expr
     -- ^ primitive operations (fully applied)
   | CallFunction Type Name [Expr]
     -- ^ function calls (fully applied)
-
-  | MakeClosure Type Name [Expr]
-    -- ^ build a closure, name and capture
-  | CallClosure Type Expr [Expr]
-    -- ^ call a closure (fully applied)
   deriving (Show, Eq, Ord, Generic)
 
 
@@ -91,10 +83,6 @@ data Expr
 data Global
   = DefFunction Name [Arg] Type Expr
     -- ^ global function definition
-
-  | DefClosure Name [Arg] [Arg] Type Expr
-    -- ^ global closure-function definition,
-    -- expects a capture and arguments
   deriving (Show, Eq, Ord, Generic)
 
 
@@ -128,8 +116,6 @@ exprType = \case
   If ty _ _ _ -> ty
   Prim ty _ _ -> ty
   CallFunction ty _ _ -> ty
-  MakeClosure ty _ _ -> ty
-  CallClosure ty _ _ -> ty
 
 
 -- | all unbound variables in an expression
@@ -145,8 +131,6 @@ freeVars = \case
       freeVars cond `Map.union` freeVars th `Map.union` freeVars el
   Prim _ _ args -> Map.unions (map freeVars args)
   CallFunction _ _ args -> Map.unions (map freeVars args)
-  MakeClosure _ _ env -> Map.unions (map freeVars env)
-  CallClosure _ fun args -> Map.unions (freeVars fun : map freeVars args)
 
 
 ----------------------------------------------------------------------
@@ -158,7 +142,6 @@ numArgs = \case
   TInt -> 0
   TBool -> 0
   TFunction args _ -> length args
-  TClosure args _ -> length args
 
 -- | argument types due to a function's type
 argTypes :: Type -> [Type]
@@ -166,11 +149,9 @@ argTypes = \case
   TInt -> []
   TBool -> []
   TFunction args _ -> args
-  TClosure args _ -> args
 
 -- | a function's return type due to its type
 returnType :: Type -> Type
 returnType = \case
   TFunction _ retty -> retty
-  TClosure _ retty -> retty
   _ -> panic "Not a function type"
