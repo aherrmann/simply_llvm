@@ -18,10 +18,11 @@ $ nix-shell
 
 ## Usage
 
-Once the environment is set up you can enter an interactive GHCi session with
+Once the environment is set up you can enter an interactive GHCi session with either:
 
 ``` sh
 $ cabal repl
+$ stack repl
 ```
 
 and start exploring the code:
@@ -33,6 +34,13 @@ and start exploring the code:
 λ> ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= printLLVMOpt optInline
 λ> ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= printAssemblyOpt optInline
 λ> ex01b_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= exec [5]
+```
+
+The examples can be loaded by in the interactive session with:
+
+``` sh
+λ> :load Example.hs
+λ> ex5
 ```
 
 You should have a look at the [slides](slides/slides.md)
