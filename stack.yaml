@@ -1,0 +1,16 @@
+resolver: lts-6.27
+
+packages:
+- '.'
+extra-deps:
+- libffi-0.1
+- dlist-0.8.0.2
+- protolude-0.1.7
+- llvm-general-pure-3.5.1.0
+- llvm-general-3.5.1.2
+
+flags:
+  llvm-general:
+    shared-llvm: true
+
+extra-package-dbs: []
