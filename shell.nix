@@ -1,12 +1,12 @@
-with (import ./nixpkgs.nix);
+with (import ./nixpkgs);
 
 let
   ghc =
-    haskell.packages.ghc7103.ghcWithHoogle (pkgs: with pkgs; [
+    haskellPackages.ghcWithHoogle (pkgs: with pkgs; [
       protolude
       dlist
-      llvm-general-pure
-      llvm-general
+      llvm-hs-pure
+      llvm-hs
       libffi
       ansi-wl-pprint
       pretty
@@ -16,7 +16,7 @@ in
   pkgs.stdenv.mkDerivation {
     name = "simply-llvm-env";
     buildInputs = [
-      ghc llvm_35 clang_35
+      ghc llvm_4 clang_4
     ];
     shellHook = ''
       eval $(egrep ^export ${ghc}/bin/ghc)
