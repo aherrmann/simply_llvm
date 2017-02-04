@@ -1,6 +1,6 @@
 module Simply.LLVM.Codegen where
 
-import Protolude hiding (local, void, local, one, zero)
+import Protolude hiding (Type, local, void, local, one, zero)
 import Data.String (String, IsString(..))
 import Data.Word
 import Data.Function
@@ -9,17 +9,17 @@ import qualified Data.List as List
 
 import Control.Applicative
 
-import LLVM.General.AST hiding (callingConvention, functionAttributes)
-import LLVM.General.AST.Type
-import LLVM.General.AST.Global
-import qualified LLVM.General.AST as AST
+import LLVM.AST hiding (callingConvention, functionAttributes)
+import LLVM.AST.Type
+import LLVM.AST.Global
+import qualified LLVM.AST as AST
 
-import qualified LLVM.General.AST.Linkage as L
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Attribute as A
-import qualified LLVM.General.AST.IntegerPredicate as IP
-import qualified LLVM.General.AST.FloatingPointPredicate as FP
-import qualified LLVM.General.AST.CallingConvention as CC
+import qualified LLVM.AST.Linkage as L
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Attribute as A
+import qualified LLVM.AST.IntegerPredicate as IP
+import qualified LLVM.AST.FloatingPointPredicate as FP
+import qualified LLVM.AST.CallingConvention as CC
 
 -------------------------------------------------------------------------------
 -- Module Level

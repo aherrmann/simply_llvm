@@ -1,6 +1,6 @@
 module Simply where
 
-import Protolude
+import Protolude hiding (Type)
 import Text.PrettyPrint.GenericPretty (pp)
 import Simply.AST.Simply
 import qualified Simply.AST.IR as IR

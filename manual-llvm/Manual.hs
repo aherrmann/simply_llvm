@@ -2,13 +2,13 @@
 
 module Codegen where
 
-import Protolude
-import LLVM.General.AST
-import qualified LLVM.General.AST as AST
-import LLVM.General.AST.Global
-import LLVM.General.Context
-import LLVM.General.Module
-import LLVM.General.PrettyPrint
+import Protolude hiding (Type)
+import LLVM.AST
+import qualified LLVM.AST as AST
+import LLVM.AST.Global
+import LLVM.Context
+import LLVM.Module
+import LLVM.PrettyPrint
 
 
 int :: Type

@@ -1,6 +1,6 @@
 module Simply.Examples.Simply where
 
-import Protolude
+import Protolude hiding (Type)
 import Simply.AST.Simply
 
 

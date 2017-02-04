@@ -4,11 +4,11 @@ module Simply.Transform.Simply2IR
   ( transform
   ) where
 
-import Protolude
+import Protolude hiding (Type)
 import Control.Arrow ((&&&))
 import Control.Monad (zipWithM)
 import Control.Monad.Trans.Maybe
-import Control.Monad.RWS
+import Control.Monad.RWS hiding ((<>))
 import Data.DList (DList)
 import qualified Data.DList as DList
 import Data.Map.Strict (Map)

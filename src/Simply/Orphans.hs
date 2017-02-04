@@ -5,25 +5,25 @@ module Simply.Orphans
   (
   ) where
 
-import Protolude hiding ((<>))
+import Protolude hiding (Type, (<>))
 import qualified Data.Map as Map
-import LLVM.General.AST
-import LLVM.General.AST.AddrSpace
-import LLVM.General.AST.CallingConvention
-import LLVM.General.AST.COMDAT
-import LLVM.General.AST.Constant
-import LLVM.General.AST.DataLayout
-import LLVM.General.AST.DLL
-import LLVM.General.AST.Float
-import LLVM.General.AST.FloatingPointPredicate
-import LLVM.General.AST.FunctionAttribute
-import LLVM.General.AST.InlineAssembly
-import LLVM.General.AST.IntegerPredicate
-import LLVM.General.AST.Linkage
-import LLVM.General.AST.ParameterAttribute
-import LLVM.General.AST.RMWOperation
-import LLVM.General.AST.ThreadLocalStorage
-import LLVM.General.AST.Visibility
+import LLVM.AST
+import LLVM.AST.AddrSpace
+import LLVM.AST.CallingConvention
+import LLVM.AST.COMDAT
+import LLVM.AST.Constant
+import LLVM.AST.DataLayout
+import LLVM.AST.DLL
+import LLVM.AST.Float
+import LLVM.AST.FloatingPointPredicate
+import LLVM.AST.FunctionAttribute
+import LLVM.AST.InlineAssembly
+import LLVM.AST.IntegerPredicate
+import LLVM.AST.Linkage
+import LLVM.AST.ParameterAttribute
+import LLVM.AST.RMWOperation
+import LLVM.AST.ThreadLocalStorage
+import LLVM.AST.Visibility
 import Text.PrettyPrint
 import Text.PrettyPrint.GenericPretty (Out, docPrec, doc)
 
@@ -51,6 +51,9 @@ instance Out Type
 
 deriving instance Generic Operand
 instance Out Operand
+
+deriving instance Generic Metadata
+instance Out Metadata
 
 deriving instance Generic MetadataNode
 instance Out MetadataNode
@@ -150,6 +153,9 @@ instance Out AlignmentInfo
 
 deriving instance Generic AlignType
 instance Out AlignType
+
+deriving instance Generic UnnamedAddr
+instance Out UnnamedAddr
 
 
 instance (Out a, Ord a) => Out (Set a) where

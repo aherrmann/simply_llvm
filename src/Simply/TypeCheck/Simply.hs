@@ -18,7 +18,7 @@ module Simply.TypeCheck.Simply
   , typeCheck
   ) where
 
-import Protolude
+import Protolude hiding (Type)
 import Control.Arrow ((&&&))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map

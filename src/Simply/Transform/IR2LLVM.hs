@@ -2,21 +2,21 @@ module Simply.Transform.IR2LLVM
   ( transform
   ) where
 
-import Protolude hiding (local, void, zero)
+import Protolude hiding (Type, local, void, zero)
 import Data.List (zip3)
 
 import Simply.AST.IR as IR
 import Simply.LLVM.Codegen
 
-import LLVM.General.AST.Type
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.IntegerPredicate as IP
-import LLVM.General.Context
-import LLVM.General.Module
-import LLVM.General.PassManager
-import LLVM.General.PrettyPrint
-import LLVM.General.Target
+import LLVM.AST.Type
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.IntegerPredicate as IP
+import LLVM.Context
+import LLVM.Module
+import LLVM.PassManager
+import LLVM.PrettyPrint
+import LLVM.Target
 
 
 ----------------------------------------------------------------------

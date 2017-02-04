@@ -38,7 +38,7 @@ module Simply.AST.Simply
   , unfoldApp
   ) where
 
-import Protolude
+import Protolude hiding (Type)
 import Control.Arrow ((&&&))
 import Data.Set (Set)
 import qualified Data.Set as Set
