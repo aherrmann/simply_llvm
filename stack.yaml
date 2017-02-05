@@ -2,15 +2,21 @@ resolver: lts-6.27
 
 packages:
 - '.'
+- location:
+    git: git@github.com:llvm-hs/llvm-hs.git
+    commit: b7e6c8520f3eb51d000526d93d06f5e9b00cb3d8
+  subdirs:
+  - llvm-hs-pure
+  - llvm-hs
 extra-deps:
 - libffi-0.1
 - dlist-0.8.0.2
 - protolude-0.1.7
-- llvm-general-pure-3.5.1.0
-- llvm-general-3.5.1.2
+- llvm-hs-pure-4.0.0.0
+- llvm-hs-4.0.0.0
 
 flags:
-  llvm-general:
+  llvm-hs:
     shared-llvm: true
 
 extra-package-dbs: []
