@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                simply-llvm
-version:             0.1.0.0
+version:             0.2.0.0
 synopsis:            Compile simply typed lambda calculuse using LLVM
 -- description:         
 homepage:            https://github.com/aherrmann/simply_llvm

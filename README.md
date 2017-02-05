@@ -3,6 +3,8 @@
 Compiling a simple functional language with LLVM and Haskell
 
 Example code to the presentation given at the HaskellerZ Zurich Haskell meetup.
+Ported to use the [`llvm-hs`](https://github.com/llvm-hs/llvm-hs)
+LLVM Haskell bindings.
 
 
 ## Setup
