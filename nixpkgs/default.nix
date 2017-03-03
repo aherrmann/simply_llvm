@@ -5,17 +5,11 @@ let
   pkgs = import (fetchFromGitHub {
     owner = "NixOS";
     repo = "nixpkgs";
-    rev = "3ccc139b3db8d9417006eb9deeb75038b2fc33fa";
-    sha256 = "1fzbkqlni45hsx313c6cnh4apwzsqasv3vmgp7ih20lhmxv9w5sj";
+    rev = "46683187069bbeceeb70455c55c08f26d2a67bc2";
+    sha256 = "1435g12390grfkadjp25ypyimmdqrjxv71q7bbzmrilhbpfp2yg8";
   }) {};
 
   overlay = self: super: with self; {
-
-    llvmPackages_4 = callPackage ./llvm_4 {
-      inherit (stdenvAdapters) overrideCC;
-    };
-    llvm_4 = llvmPackages_4.llvm;
-    clang_4 = llvmPackages_4.clang;
 
     haskellPackages = super.haskellPackages.override {
       overrides = self: super: with self; {
