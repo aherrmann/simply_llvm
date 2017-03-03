@@ -7,6 +7,7 @@ module Simply.Orphans
 
 import Protolude hiding (Type, (<>))
 import qualified Data.Map as Map
+import Data.List.NonEmpty (NonEmpty)
 import LLVM.AST
 import LLVM.AST.AddrSpace
 import LLVM.AST.CallingConvention
@@ -168,6 +169,9 @@ instance (Out a, Out b, Ord a) => Out (Map a b) where
       where
         f (key, val) = doc key <> colon <+> doc val
     doc = docPrec 0
+
+
+instance (Out a) => Out (NonEmpty a)
 
 
 instance Out Text where

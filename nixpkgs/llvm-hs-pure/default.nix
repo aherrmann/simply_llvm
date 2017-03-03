@@ -9,8 +9,8 @@ mkDerivation {
   src = builtins.toPath "${fetchFromGitHub {
     owner = "llvm-hs";
     repo = "llvm-hs";
-    rev = "b7e6c8520f3eb51d000526d93d06f5e9b00cb3d8";
-    sha256 = "09pjpf4afifq4ic3lshjwc7fhh5w1axmx92ffs5zy90q5frs5pr4";
+    rev = "a06007debe3448466454363ec8a0823381edbd87";
+    sha256 = "1sqmjjbvf0g1l6rm6jbvjdvh5xzfby5kqmjx3g2967p10x0pndlh";
   }}/llvm-hs-pure";
   libraryHaskellDepends = [
     base containers mtl parsec template-haskell transformers
@@ -21,7 +21,6 @@ mkDerivation {
     test-framework-hunit test-framework-quickcheck2 transformers
     transformers-compat
   ];
-  doHaddock = false;
   homepage = "http://github.com/llvm-hs/llvm-hs/";
   description = "Pure Haskell LLVM functionality (no FFI)";
   license = stdenv.lib.licenses.bsd3;

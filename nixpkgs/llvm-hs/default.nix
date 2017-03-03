@@ -11,9 +11,10 @@ mkDerivation {
   src = builtins.toPath "${fetchFromGitHub {
     owner = "llvm-hs";
     repo = "llvm-hs";
-    rev = "b7e6c8520f3eb51d000526d93d06f5e9b00cb3d8";
-    sha256 = "09pjpf4afifq4ic3lshjwc7fhh5w1axmx92ffs5zy90q5frs5pr4";
+    rev = "a06007debe3448466454363ec8a0823381edbd87";
+    sha256 = "1sqmjjbvf0g1l6rm6jbvjdvh5xzfby5kqmjx3g2967p10x0pndlh";
   }}/llvm-hs";
+  configureFlags = [ "-fshared-llvm" ];
   setupHaskellDepends = [ base Cabal containers ];
   libraryHaskellDepends = [
     array base bytestring containers llvm-hs-pure mtl parsec
