@@ -1,16 +1,17 @@
-module Simply.Transform.IR2LLVM
-  ( transform
+module Simply.LLVM.FromIntermediate
+  ( fromIntermediate
   ) where
 
 import Protolude hiding (Type, local, void, zero)
+
 import Data.List (zip3)
 
-import Simply.AST.IR as IR
-import Simply.LLVM.Codegen
-
 import LLVM.AST.Type
-import qualified LLVM.AST as AST
+import qualified LLVM.AST as LLVM
 import qualified LLVM.AST.IntegerPredicate as IP
+
+import Simply.Intermediate.AST as Intermediate
+import Simply.LLVM.Codegen
 
 
 ----------------------------------------------------------------------
@@ -21,17 +22,16 @@ import qualified LLVM.AST.IntegerPredicate as IP
 -- Every type-correct "Simply" program can be transformed to LLVM through IR.
 --
 -- This function is partial and will fail on an ill-formed program.
-transform :: Program -> AST.Module
-transform prog = runLLVM initModule (codegenProg prog)
-  where
-    initModule = emptyModule "Simply-LLVM Module"
+fromIntermediate :: Program -> LLVM.Module
+fromIntermediate prog = runLLVM initModule (codegenProg prog)
+  where initModule = emptyModule "Simply-LLVM Module"
 
 
 ----------------------------------------------------------------------
 -- Transformations
 
 -- | Transform an IR type to an LLVM type.
-llvmType :: IR.Type -> AST.Type
+llvmType :: Intermediate.Type -> LLVM.Type
 llvmType TInt = int
 llvmType TBool = ibool
 llvmType (TFunction args retty) = fn (llvmType retty) (map llvmType args)
@@ -39,7 +39,7 @@ llvmType (TClosure args retty) = closure (llvmType retty) (map llvmType args)
 
 
 -- | Transform an IR expression to LLVM.
-codegenExpr :: Expr -> Codegen AST.Operand
+codegenExpr :: Expr -> Codegen LLVM.Operand
 codegenExpr expr = case expr of
 
   Lit TInt (LInt x) ->
@@ -47,12 +47,12 @@ codegenExpr expr = case expr of
 
   Lit TBool (LBool x) ->
     pure $! bool false true x
-  
+
   LVar _ty x ->
     getvar (toS x)
 
   GVar ty x ->
-    pure $! cons $ global (llvmType ty) (AST.Name $ toS x)
+    pure $! cons $ global (llvmType ty) (LLVM.Name $ toS x)
 
   Let _ty name ebound ein -> do
     ebound' <- codegenExpr ebound
@@ -104,33 +104,34 @@ codegenExpr expr = case expr of
   CallFunction retTy name args -> do
     let funTy = llvmType (TFunction (map exprType args) retTy)
     args' <- traverse codegenExpr args
-    call (llvmType retTy) (externf funTy (AST.Name (toS name))) args'
+    call (llvmType retTy) (externf funTy (LLVM.Name (toS name))) args'
 
   MakeClosure (TClosure argtys retty) name env -> do
     envptr' <-
-        if null env then
-            pure $! nullP anyPtr
-        else do
-            let envtys' = map (llvmType . exprType) env
-            env' <- traverse codegenExpr env
-            (anyptr, envptr) <- malloc (closureEnv envtys')
-            forM_ (zip3 [0..] envtys' env') $ \(i, ty, v) -> do
-                p <- getElementPtr (ptr ty) envptr [cint32 0, cint32 i]
-                store p v
-            pure $! anyptr
-    let retty' = llvmType retty
-        argtys' = map llvmType argtys
-        closurety = closure retty' argtys'
-        funty = fn retty' (anyPtr : argtys')
-        name' = AST.Name $ toS name
+      if null env then
+        pure $! nullP anyPtr
+      else do
+        let envtys' = map (llvmType . exprType) env
+        env' <- traverse codegenExpr env
+        (anyptr, envptr) <- malloc (closureEnv envtys')
+        forM_ (zip3 [0..] envtys' env') $ \(i, ty, v) -> do
+          p <- getElementPtr (ptr ty) envptr [cint32 0, cint32 i]
+          store p v
+        pure $! anyptr
+    let
+      retty' = llvmType retty
+      argtys' = map llvmType argtys
+      closurety = closure retty' argtys'
+      funty = fn retty' (anyPtr : argtys')
+      name' = LLVM.Name $ toS name
     buildStruct closurety [cons $ global funty name', envptr']
 
   CallClosure retty cl args -> do
     let TClosure clargtys clretty = exprType cl
-    unless (clargtys == map exprType args)
-      $ panic "Argument type mismatch in call closure"
-    unless (retty == clretty)
-      $ panic "Return type mismatch in call closure"
+    unless (clargtys == map exprType args) $
+      panic "Argument type mismatch in call closure"
+    unless (retty == clretty) $
+      panic "Return type mismatch in call closure"
 
     let funty = fn (llvmType retty) (anyPtr : map (llvmType . exprType) args)
     cl' <- codegenExpr cl
@@ -139,7 +140,7 @@ codegenExpr expr = case expr of
     envPtr <- extractValue anyPtr cl' [1]
     call (llvmType retty) funPtr (envPtr : args')
 
-  _ -> panic $! "Invalid expression: " <> show expr 
+  _ -> panic $! "Invalid expression: " <> show expr
 
 
 -- | transform a global binding to LLVM
@@ -147,26 +148,28 @@ codegenExpr expr = case expr of
 -- adds global definitons to the LLVM module
 codegenGlobal :: Global -> LLVM ()
 codegenGlobal (DefFunction name args retty body) = do
-  let args' = map (swap . first (AST.Name . toS) . second llvmType) args
-      retty' = llvmType retty
-      def = if name == "main" then define else internal
+  let
+    args' = map (swap . first (LLVM.Name . toS) . second llvmType) args
+    retty' = llvmType retty
+    def = if name == "main" then define else internal
   def retty' (toS name) args' $
     codegenBody args' body
 codegenGlobal (DefClosure name env args retty body) = do
-  let env' = map (swap . first (AST.Name . toS) . second llvmType) env
-      args' = map (swap . first (AST.Name . toS) . second llvmType) args
-      retty' = llvmType retty
-      envname = "__env"
-      envarg = (anyPtr, envname)
+  let
+    env' = map (swap . first (LLVM.Name . toS) . second llvmType) env
+    args' = map (swap . first (LLVM.Name . toS) . second llvmType) args
+    retty' = llvmType retty
+    envname = "__env"
+    envarg = (anyPtr, envname)
   internal retty' (toS name) (envarg:args') $ do
 
     -- extract closure environment
     unless (null env) $ do
       envptr <- getClosureEnvPtr envname (map fst env')
-      forM_ (zip [0..] env') $ \(i, (ty, AST.Name n)) -> do
-          p <- getElementPtr (ptr ty) envptr [cint32 0, cint32 i]
-          v <- load ty p
-          assign (toS n) v
+      forM_ (zip [0..] env') $ \(i, (ty, LLVM.Name n)) -> do
+        p <- getElementPtr (ptr ty) envptr [cint32 0, cint32 i]
+        v <- load ty p
+        assign (toS n) v
 
     codegenBody args' body
 
@@ -174,14 +177,14 @@ codegenGlobal (DefClosure name env args retty body) = do
 -- | Transform a functions to LLVM
 -- that expects the given arguments in contex.
 codegenBody
-  :: [(AST.Type, AST.Name)] -> Expr -> Codegen (AST.Named AST.Terminator)
+  :: [(LLVM.Type, LLVM.Name)] -> Expr -> Codegen (LLVM.Named LLVM.Terminator)
 codegenBody args' body = do
-    -- extract argument list
-    forM_ args' $ \(ty, AST.Name name) ->
-       assign (toS name) (local ty (AST.Name name))
+  -- extract argument list
+  forM_ args' $ \(ty, LLVM.Name name) ->
+    assign (toS name) (local ty (LLVM.Name name))
 
-    body' <- codegenExpr body
-    ret body'
+  body' <- codegenExpr body
+  ret body'
 
 
 -- | transform a program to LLVM

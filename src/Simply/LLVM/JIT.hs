@@ -55,7 +55,7 @@ printLLVM :: AST.Module -> IO ()
 printLLVM = printLLVMOpt optNone
 
 printLLVMOpt :: Optimizer -> AST.Module -> IO ()
-printLLVMOpt opt ast = runManaged . runJit $ do
+printLLVMOpt opt ast = runManaged . runJIT $ do
   m <- moduleFromAST ast
   opt m
   s <- llvmIRFromModule m
@@ -65,7 +65,7 @@ printAssembly :: AST.Module -> IO ()
 printAssembly = printAssemblyOpt optNone
 
 printAssemblyOpt :: Optimizer -> AST.Module -> IO ()
-printAssemblyOpt opt ast = runManaged . runJit $ do
+printAssemblyOpt opt ast = runManaged . runJIT $ do
   m <- moduleFromAST ast
   opt m
   s <- assemblyFromModule m
@@ -85,19 +85,19 @@ withExecOpt
   -> AST.Module
   -> (([Int32] -> IO Int32) -> IO a)
   -> IO a
-withExecOpt opt ast = withJit $ do
+withExecOpt opt ast = withJIT $ do
   m <- moduleFromAST ast
   opt m
   compile m
 
 verifyModule :: AST.Module -> IO (Either VerifyException ())
-verifyModule ast = withJit (moduleFromAST ast) (liftIO . try . verify)
+verifyModule ast = withJIT (moduleFromAST ast) (liftIO . try . verify)
 
 
 ----------------------------------------------------------------------
 -- Optimizers
 
-type Optimizer = Module -> Jit ()
+type Optimizer = Module -> JIT ()
 
 optNone :: Optimizer
 optNone _ = pure ()
@@ -141,7 +141,7 @@ optTarget m = do
   pm <- passManager (passOptTarget layout libraryInfo machine)
   void . liftIO $ runPassManager pm m
 
-passManager :: PassSetSpec -> Jit PassManager
+passManager :: PassSetSpec -> JIT PassManager
 passManager passes =
   using $ managed (withPassManager passes)
 
@@ -149,49 +149,50 @@ passManager passes =
 ----------------------------------------------------------------------
 -- Error Handling
 
-data JitError
+data JITError
   = MissingEntryPoint
   deriving (Show, Eq, Ord, Typeable)
 
-instance Exception JitError
+instance Exception JITError
 
 
 ----------------------------------------------------------------------
 -- The JIT
 
-newtype Jit a = Jit (ReaderT Context Managed a)
+newtype JIT a = JIT (ReaderT Context Managed a)
   deriving
     ( Functor, Applicative, Monad
     , MonadReader Context, MonadIO, MonadManaged
     )
 
-runJit :: Jit a -> Managed a
-runJit (Jit m) = do
+runJIT :: JIT a -> Managed a
+runJIT (JIT m) = do
   ctx <- using $ managed withContext
   runReaderT m ctx
 
-withJit :: Jit a -> (a -> IO r) -> IO r
-withJit = with . runJit
+withJIT :: JIT a -> (a -> IO r) -> IO r
+withJIT = with . runJIT
 
-moduleFromAST :: AST.Module -> Jit Module
+moduleFromAST :: AST.Module -> JIT Module
 moduleFromAST ast = do
   ctx <- ask
   using $ managed (withModuleFromAST ctx ast)
 
-llvmIRFromModule :: Module -> Jit ByteString
+llvmIRFromModule :: Module -> JIT ByteString
 llvmIRFromModule = liftIO . moduleLLVMAssembly
 
-assemblyFromModule :: Module -> Jit ByteString
+assemblyFromModule :: Module -> JIT ByteString
 assemblyFromModule m = do
   machine <- using $ managed withHostTargetMachine
   liftIO $ moduleTargetAssembly machine m
 
-compile :: Module -> Jit ([Int32] -> IO Int32)
+compile :: Module -> JIT ([Int32] -> IO Int32)
 compile m = do
-  let optlevel = Just 0
-      model = Nothing
-      framePtrElim = Nothing
-      fastInstr = Nothing
+  let
+    optlevel = Just 0
+    model = Nothing
+    framePtrElim = Nothing
+    fastInstr = Nothing
   ctx <- ask
   engine <- using $ managed (withMCJIT ctx optlevel model framePtrElim fastInstr)
   bin <- using $ managed (withModuleInEngine engine m)

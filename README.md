@@ -31,11 +31,11 @@ and start exploring the code:
 
 ``` hs
 λ> ex01a_factorial & Simply.typeCheck >>= pp
-λ> ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform >>= pp
-λ> ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= printLLVM
-λ> ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= printLLVMOpt optInline
-λ> ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= printAssemblyOpt optInline
-λ> ex01b_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= exec [5]
+λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface >>= pp
+λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVM
+λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVMOpt optInline
+λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printAssemblyOpt optInline
+λ> ex01b_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= exec [5]
 ```
 
 The examples can be loaded by in the interactive session with:

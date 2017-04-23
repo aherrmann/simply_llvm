@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-module Simply.AST.Simply
+module Simply.Surface.AST
   (
     -- * AST
     Name
@@ -71,22 +71,22 @@ data Type
 -- | literal constants
 data Lit
   = LInt Int
-  -- ^ integer literals
+    -- ^ integer literals
   | LBool Bool
-  -- ^ boolean literals
+    -- ^ boolean literals
   deriving (Show, Eq, Ord, Generic)
 
 
 -- | primitive binary operations
 data BinaryOp
   = Add
-  -- ^ integer addition @Int -> Int -> Int@
+    -- ^ integer addition @Int -> Int -> Int@
   | Sub
-  -- ^ integer subtraction @Int -> Int -> Int@
+    -- ^ integer subtraction @Int -> Int -> Int@
   | Mul
-  -- ^ integer multiplication @Int -> Int -> Int@
+    -- ^ integer multiplication @Int -> Int -> Int@
   | Eql
-  -- ^ integer equality comparison @Int -> Int -> Bool@
+    -- ^ integer equality comparison @Int -> Int -> Bool@
   deriving (Show, Eq, Ord, Generic)
 
 
@@ -255,17 +255,17 @@ infixl 9 @.
 -- (does not take global bindings into account)
 freeVars :: Expr -> Set Name
 freeVars = \case
-    Lit _ -> Set.empty
-    Var name -> Set.singleton name
-    Let name ebound ein ->
-        freeVars ebound `Set.union` Set.delete name (freeVars ein)
-    If cond th el ->
-        freeVars cond `Set.union` freeVars th `Set.union` freeVars el
-    BinaryOp _ a b -> freeVars a `Set.union` freeVars b
-    App fun arg ->
-        freeVars fun `Set.union` freeVars arg
-    Lam args body ->
-        freeVars body Set.\\ Set.fromList (map fst args)
+  Lit _ -> Set.empty
+  Var name -> Set.singleton name
+  Let name ebound ein ->
+    freeVars ebound `Set.union` Set.delete name (freeVars ein)
+  If cond then_ else_ ->
+    freeVars cond `Set.union` freeVars then_ `Set.union` freeVars else_
+  BinaryOp _ a b -> freeVars a `Set.union` freeVars b
+  App fun arg ->
+    freeVars fun `Set.union` freeVars arg
+  Lam args body ->
+    freeVars body Set.\\ Set.fromList (map fst args)
 
 -- | name of a global binding
 globalName :: Global -> Name
@@ -285,9 +285,8 @@ globalType (Def _ args retty _) = foldTArr (map snd args) retty
 -- unfoldTArr ((Int -> Bool) -> Int -> Bool)  =  ([Int -> Bool, Int], Bool)
 -- @
 unfoldTArr :: Type -> ([Type], Type)
-unfoldTArr (TArr a b) =
-    let (args, ret) = unfoldTArr b
-    in  (a:args, ret)
+unfoldTArr (TArr a b) = (a:args, ret)
+  where (args, ret) = unfoldTArr b
 unfoldTArr ty = ([], ty)
 
 -- | inverse of 'unfoldTArr'

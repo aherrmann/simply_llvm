@@ -2,17 +2,17 @@ import Protolude
 
 import Test.Hspec
 
-import qualified Simply.AST.Simply as Simply
-import qualified Simply.TypeCheck.Simply as Simply
-import qualified Simply.Transform.Simply2IR as Simply2IR
-import qualified Simply.Transform.IR2LLVM as IR2LLVM
+import qualified Simply.Surface.AST as Simply
+import qualified Simply.Surface.TypeCheck as Simply
+import qualified Simply.Intermediate.FromSurface as Intermediate
+import qualified Simply.LLVM.FromIntermediate as LLVM
 import qualified Simply.LLVM.JIT as JIT
 
-import qualified Simply.Examples.Simply as Example
+import qualified Simply.Examples as Example
 
 
 withProgram :: Simply.Program -> (([Int32] -> IO Int32) -> IO a) -> IO a
-withProgram = JIT.withExec . IR2LLVM.transform . Simply2IR.transform
+withProgram = JIT.withExec . LLVM.fromIntermediate . Intermediate.fromSurface
 
 run0 :: Simply.Program -> IO Int32
 run0 prog = withProgram prog apply0
@@ -24,7 +24,7 @@ run1 prog args = withProgram prog $ for args . apply1
 
 
 verifyProgram :: Simply.Program -> IO (Either JIT.VerifyException ())
-verifyProgram = JIT.verifyModule . IR2LLVM.transform . Simply2IR.transform
+verifyProgram = JIT.verifyModule . LLVM.fromIntermediate . Intermediate.fromSurface
 
 
 factorial :: Integral a => a -> a

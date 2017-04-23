@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-module Simply.TypeCheck.Simply
+module Simply.Surface.TypeCheck
   (
     -- * Error Handling
     ErrorCode (..)
@@ -19,12 +19,14 @@ module Simply.TypeCheck.Simply
   ) where
 
 import Protolude hiding (Type)
+
 import Control.Arrow ((&&&))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
-import Simply.AST.Simply
 import Text.PrettyPrint.GenericPretty (Out, pp)
+
+import Simply.Surface.AST
 
 
 ----------------------------------------------------------------------
@@ -151,7 +153,7 @@ checkExpr ctx expr = exprErrorTrace expr $ case expr of
   If cond th el -> do
     tyCond <- checkExpr ctx cond
     unless (tyCond == TBool) $
-        throwExprError cond (WrongType TBool tyCond)
+      throwExprError cond (WrongType TBool tyCond)
     tyTh <- checkExpr ctx th
     tyEl <- checkExpr ctx el
     unless (tyTh == tyEl) $ throwExprError_ (TypeMismatch tyTh tyEl)
@@ -160,34 +162,34 @@ checkExpr ctx expr = exprErrorTrace expr $ case expr of
   BinaryOp Add a b -> do
     tyA <- checkExpr ctx a
     unless (tyA == TInt) $
-        throwExprError a (WrongType TInt tyA)
+      throwExprError a (WrongType TInt tyA)
     tyB <- checkExpr ctx b
     unless (tyB == TInt) $
-        throwExprError b (WrongType TInt tyB)
+      throwExprError b (WrongType TInt tyB)
     pure TInt
   BinaryOp Sub a b -> do
     tyA <- checkExpr ctx a
     unless (tyA == TInt) $
-        throwExprError a (WrongType TInt tyA)
+      throwExprError a (WrongType TInt tyA)
     tyB <- checkExpr ctx b
     unless (tyB == TInt) $
-        throwExprError b (WrongType TInt tyB)
+      throwExprError b (WrongType TInt tyB)
     pure TInt
   BinaryOp Mul a b -> do
     tyA <- checkExpr ctx a
     unless (tyA == TInt) $
-        throwExprError a (WrongType TInt tyA)
+      throwExprError a (WrongType TInt tyA)
     tyB <- checkExpr ctx b
     unless (tyB == TInt) $
-        throwExprError b (WrongType TInt tyB)
+      throwExprError b (WrongType TInt tyB)
     pure TInt
   BinaryOp Eql a b -> do
     tyA <- checkExpr ctx a
     unless (tyA == TInt) $
-        throwExprError a (WrongType TInt tyA)
+      throwExprError a (WrongType TInt tyA)
     tyB <- checkExpr ctx b
     unless (tyB == TInt) $
-        throwExprError b (WrongType TInt tyB)
+      throwExprError b (WrongType TInt tyB)
     pure TBool
 
   App f x -> do
@@ -201,37 +203,37 @@ checkExpr ctx expr = exprErrorTrace expr $ case expr of
 
   Lam args body -> do
     forM_ args $ \(name, _) ->
-        unless (Text.length name > 0) $ throwExprError_ EmptyName
+      unless (Text.length name > 0) $ throwExprError_ EmptyName
     let argCtx = Map.fromList args
     unless (Map.size argCtx == length args) $
-        throwExprError_ (RecurringArgumentName args)
+      throwExprError_ (RecurringArgumentName args)
     retty <- checkExpr (argCtx `Map.union` ctx) body
     pure $! foldTArr (map snd args) retty
 
 
 checkGlobal :: Context -> Global -> Either GlobalError ()
 checkGlobal ctx (Def name args retty body) = do
-    unless (Text.length name > 0) $ Left $! GlobalError name EmptyName
-    forM_ args $ \(argname, _) ->
-        unless (Text.length argname > 0) $ Left $! GlobalError name EmptyName
-    let argCtx = Map.fromList args
-    bodyTy <- catchGlobalBodyError name $
-        checkExpr (argCtx `Map.union` ctx) body
-    unless (bodyTy == retty) $
-        Left $! GlobalError name (TypeMismatch retty bodyTy)
+  unless (Text.length name > 0) $ Left $! GlobalError name EmptyName
+  forM_ args $ \(argname, _) ->
+    unless (Text.length argname > 0) $ Left $! GlobalError name EmptyName
+  let argCtx = Map.fromList args
+  bodyTy <- catchGlobalBodyError name $
+    checkExpr (argCtx `Map.union` ctx) body
+  unless (bodyTy == retty) $
+    Left $! GlobalError name (TypeMismatch retty bodyTy)
 
 
 checkProgram :: Program -> Either ProgramError ()
 checkProgram (Program globals) = do
-    _ <- catchProgramGlobalError $ traverse (checkGlobal ctx) globals
-    case Map.lookup "main" ctx of
-      Nothing -> Left $! ProgramError $ NoMainFunction
-      Just mainty
-        | (args, ret) <- unfoldTArr mainty
-        , all (==TInt) args && ret == TInt
-        -> Right ()
-        | otherwise
-        -> Left $! ProgramError $ IllegalMainType mainty
+  _ <- catchProgramGlobalError $ traverse (checkGlobal ctx) globals
+  case Map.lookup "main" ctx of
+    Nothing -> Left $! ProgramError $ NoMainFunction
+    Just mainty
+      | (args, ret) <- unfoldTArr mainty
+      , all (==TInt) args && ret == TInt
+      -> Right ()
+      | otherwise
+      -> Left $! ProgramError $ IllegalMainType mainty
   where
     ctx = Map.fromList $ map (globalName &&& globalType) globals
 
@@ -243,8 +245,8 @@ checkProgram (Program globals) = do
 -- | type-check the program, print and abort if an error occurs
 typeCheck :: Program -> IO Program
 typeCheck prog =
-    case checkProgram prog of
-      Left err -> do
-        pp err
-        panic "Type-checking error"
-      Right _ -> pure prog
+  case checkProgram prog of
+    Left err -> do
+      pp err
+      panic "Type-checking error"
+    Right _ -> pure prog

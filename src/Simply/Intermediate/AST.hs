@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-module Simply.AST.IR
+module Simply.Intermediate.AST
   (
     -- * AST
     Name
@@ -23,11 +23,13 @@ module Simply.AST.IR
   ) where
 
 import Protolude hiding (Type)
+
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Text.PrettyPrint.GenericPretty (Out)
-import Simply.AST.Simply (Name, Lit (..), BinaryOp (..))
+
 import Simply.Orphans ()
+import Simply.Surface.AST (Name, Lit (..), BinaryOp (..))
 
 
 ----------------------------------------------------------------------
@@ -137,9 +139,9 @@ freeVars = \case
   LVar ty name -> Map.singleton name ty
   GVar _ _ -> Map.empty
   Let _ name ebound ein ->
-      freeVars ebound `Map.union` Map.delete name (freeVars ein)
+    freeVars ebound `Map.union` Map.delete name (freeVars ein)
   If _ cond th el ->
-      freeVars cond `Map.union` freeVars th `Map.union` freeVars el
+    freeVars cond `Map.union` freeVars th `Map.union` freeVars el
   BinaryOp _ _ a b -> freeVars a `Map.union` freeVars b
   CallFunction _ _ args -> Map.unions (map freeVars args)
   MakeClosure _ _ env -> Map.unions (map freeVars env)

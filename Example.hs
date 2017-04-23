@@ -3,20 +3,22 @@
 module Main where
 
 import Protolude
+
 import Text.PrettyPrint.GenericPretty (pp)
 
+import Simply.Surface.AST
 import Simply.LLVM.JIT
-import Simply.AST.Simply
-import Simply.Examples.Simply
-import qualified Simply.AST.IR as IR
-import qualified Simply.TypeCheck.Simply as Simply
-import qualified Simply.Transform.Simply2IR as Simply2IR
-import qualified Simply.Transform.IR2LLVM as IR2LLVM
+import Simply.Examples
+import qualified Simply.Surface.TypeCheck as Simply
+import qualified Simply.Intermediate.AST as Intermediate
+import qualified Simply.Intermediate.FromSurface as Intermediate
+import qualified Simply.LLVM.FromIntermediate as LLVM
 
-ex1, ex2, ex3, ex4, ex5, ex6 :: IO ()
+ex1, ex2, ex3, ex4, ex5 :: IO ()
 ex1 = ex01a_factorial & Simply.typeCheck >>= pp
-ex2 = ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform >>= pp
-ex3 = ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= printLLVM
-ex4 = ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= printLLVMOpt optInline
-ex5 = ex01a_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= printAssemblyOpt optInline
-ex6 = ex01b_factorial & Simply.typeCheck & fmap Simply2IR.transform & fmap IR2LLVM.transform >>= exec [5]
+ex2 = ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface >>= pp
+ex3 = ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVM
+ex4 = ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVMOpt optInline
+ex5 = ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printAssemblyOpt optInline
+ex6 :: IO Int32
+ex6 = ex01b_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= exec [5]

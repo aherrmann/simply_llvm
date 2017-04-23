@@ -1,20 +1,21 @@
 module Simply.LLVM.Codegen where
 
 import Protolude hiding (Type, local, void, local, one, zero)
+
 import qualified Data.Map as Map
 import qualified Data.List as List
 
 import LLVM.AST hiding (callingConvention, functionAttributes)
-import LLVM.AST.Type
 import LLVM.AST.Global
-import qualified LLVM.AST as AST
+import LLVM.AST.Type
 
-import qualified LLVM.AST.Linkage as L
-import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST as AST
 import qualified LLVM.AST.Attribute as A
+import qualified LLVM.AST.CallingConvention as CC
+import qualified LLVM.AST.Constant as C
 import qualified LLVM.AST.IntegerPredicate as IP
 import qualified LLVM.AST.FloatingPointPredicate as FP
-import qualified LLVM.AST.CallingConvention as CC
+import qualified LLVM.AST.Linkage as L
 
 import Simply.Orphans ()
 
@@ -76,7 +77,7 @@ internal retty label argtys body = addDefn $
 -- (used for malloc)
 external ::  Type -> Text -> [(Type, Name)] -> LLVM ()
 external retty label argtys = addDefn $
-  GlobalDefinition $ functionDefaults 
+  GlobalDefinition $ functionDefaults
   { name        = Name $ toS label
   , linkage     = L.External
   , parameters  = ([Parameter ty nm [] | (ty, nm) <- argtys], False)
@@ -177,7 +178,7 @@ uniqueName nm ns =
 type SymbolTable = [(Text, Operand)]
 
 data CodegenState
-  = CodegenState 
+  = CodegenState
   { currentBlock :: Name                     -- Name of the active block to append to
   , blocks       :: Map.Map Name BlockState  -- Blocks for function
   , symtab       :: SymbolTable              -- Function scope symbol table
@@ -187,7 +188,7 @@ data CodegenState
   } deriving Show
 
 data BlockState
-  = BlockState 
+  = BlockState
   { idx   :: Int                            -- Block index
   , stack :: [Named Instruction]            -- Stack of instructions
   , term  :: Maybe (Named Terminator)       -- Block terminator
@@ -260,8 +261,9 @@ addBlock bname = do
   bls <- gets blocks
   ix <- gets blockCount
   nms <- gets names
-  let new = emptyBlock ix
-      (qname, supply) = uniqueName bname nms
+  let
+    new = emptyBlock ix
+    (qname, supply) = uniqueName bname nms
   modify $ \s -> s { blocks = Map.insert (Name $ toS qname) new bls
                    , blockCount = ix + 1
                    , names = supply

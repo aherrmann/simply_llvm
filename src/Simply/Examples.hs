@@ -1,9 +1,10 @@
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
-module Simply.Examples.Simply where
+module Simply.Examples where
 
 import Protolude hiding (Type)
-import Simply.AST.Simply
+
+import Simply.Surface.AST
 
 
 ex01a_factorial :: Program
