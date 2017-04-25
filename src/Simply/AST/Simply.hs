@@ -154,21 +154,20 @@ data Global
 
 -- | the program
 data Program
-  = Program [Global] [Arg] Expr
-    -- ^ a program is a list of global definitions and a main function
+  = Program [Global]
+    -- ^ a program is a list of global definitions including the main function.
     --
-    -- The main function's result type can be inferred and has to be @Int@.
+    -- The main function's result type has to be @Int@.
     --
     -- @
-    -- globals
-    --     factorial' (acc : Int) (n : Int) : Int =
-    --         if n == 0 then
-    --             acc
-    --         else
-    --             factorial' (acc * n) (n - 1)
-    --     factorial (n : Int) : Int =
-    --         factorial' 1 n
-    -- main (n : Int) = factorial n
+    -- fun factorial' (acc : Int) (n : Int) : Int =
+    --     if n == 0 then
+    --         acc
+    --     else
+    --         factorial' (acc * n) (n - 1)
+    -- fun factorial (n : Int) : Int =
+    --     factorial' 1 n
+    -- fun main (n : Int) : Int = factorial n
     -- @
   deriving (Show, Eq, Ord, Generic)
 

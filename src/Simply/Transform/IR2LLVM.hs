@@ -149,7 +149,8 @@ codegenGlobal :: Global -> LLVM ()
 codegenGlobal (DefFunction name args retty body) = do
   let args' = map (swap . first (AST.Name . toS) . second llvmType) args
       retty' = llvmType retty
-  internal retty' (toS name) args' $
+      def = if name == "main" then define else internal
+  def retty' (toS name) args' $
     codegenBody args' body
 codegenGlobal (DefClosure name env args retty body) = do
   let env' = map (swap . first (AST.Name . toS) . second llvmType) env
@@ -185,16 +186,10 @@ codegenBody args' body = do
 
 -- | transform a program to LLVM
 codegenProg :: Program -> LLVM ()
-codegenProg (Program glbls args retty main) = do
+codegenProg (Program glbls) = do
 
   -- external symbols
   external (ptr i8) "malloc" [(i32, "size")]
 
   -- global functions
   mapM_ codegenGlobal glbls
-
-  -- main function
-  let args' = map (swap . first (AST.Name . toS) . second llvmType) args
-      retty' = llvmType retty
-  define retty' "__main" args' $
-    codegenBody args' main

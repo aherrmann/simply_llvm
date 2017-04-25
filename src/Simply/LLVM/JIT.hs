@@ -195,6 +195,6 @@ compile m = do
   ctx <- ask
   engine <- using $ managed (withMCJIT ctx optlevel model framePtrElim fastInstr)
   bin <- using $ managed (withModuleInEngine engine m)
-  mbMainFun <- liftIO $ getFunction bin (AST.Name "__main")
+  mbMainFun <- liftIO $ getFunction bin (AST.Name "main")
   mainFun <- maybe (throwIO $ MissingEntryPoint) pure mbMainFun
   pure $! \ args -> callFFI mainFun retInt32 (map argInt32 args)

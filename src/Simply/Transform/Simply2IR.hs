@@ -48,9 +48,9 @@ type Transform = RWS (Context, Context) (DList IR.Global) Int
 --
 -- It is illegal to pass a program that is not type-correct.
 transform :: Program -> IR.Program
-transform prog = IR.Program (DList.apply extra glbls) args retty main
+transform prog = IR.Program (DList.apply extra glbls)
   where
-    (IR.Program glbls args retty main, extra) =
+    (IR.Program glbls, extra) =
         evalRWS (transfProgram prog) (Map.empty, Map.empty) 0
 
 
@@ -310,13 +310,10 @@ transfGlobal (Def name args retty body) =
 
 -- | transform a program in "Simply" to IR
 transfProgram :: Program -> Transform IR.Program
-transfProgram (Program glbls args main) =
+transfProgram (Program glbls) =
     addGlobalCtx ctx $ do
         glbls' <- traverse transfGlobal glbls
-        let args' = map (second transfType) args
-            retty' = IR.TInt -- Main function must always produce an Int
-        main' <- transfBody args' retty' main
-        pure $! IR.Program glbls' args' retty' main'
+        pure $! IR.Program glbls'
   where
     ctx = map (globalName &&& transfGlobalType) glbls
     transfGlobalType (Def _ args' retty _) =

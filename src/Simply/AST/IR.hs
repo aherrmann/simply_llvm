@@ -97,7 +97,7 @@ data Global
 
 -- | the program
 data Program
-  = Program [Global] [Arg] Type Expr
+  = Program [Global]
     -- ^ A program is a list of global definitions and a main function.
     -- We specify the return type explicitly.
   deriving (Show, Eq, Ord, Generic)

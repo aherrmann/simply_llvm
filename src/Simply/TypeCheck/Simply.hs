@@ -44,6 +44,10 @@ data ErrorCode
     -- ^ expected a function but got something else
   | RecurringArgumentName [Arg]
     -- ^ an argument name appears more than once in an argument list
+  | IllegalMainType Type
+    -- ^ the main function must be a function from zero or more Int to Int
+  | NoMainFunction
+    -- ^ a program must have exactly one main function
   deriving (Show, Eq, Ord, Generic, Typeable)
 
 instance Out ErrorCode
@@ -103,23 +107,12 @@ catchGlobalBodyError name = \case
 data ProgramError
   = ProgramError ErrorCode
     -- ^ an error directly in the program definition
-    -- (not its body or a global binding)
-  | ProgramMainError ExprError
-    -- ^ an error within the programs main expression
+    -- (not a global binding)
   | ProgramGlobalError GlobalError
     -- ^ an error with a global binding
   deriving (Show, Eq, Ord, Generic, Typeable)
 
 instance Out ProgramError
-
-
--- | Forward an expression error
--- in the main expression of the program
--- as a program error
-catchProgramMainError :: Either ExprError a -> Either ProgramError a
-catchProgramMainError = \case
-  Left err -> Left $! ProgramMainError err
-  Right a -> Right a
 
 
 -- | Forward a global error
@@ -201,14 +194,16 @@ checkGlobal ctx (Def name args retty body) = do
 
 
 checkProgram :: Program -> Either ProgramError ()
-checkProgram (Program globals args main) = do
-    forM_ args $ \(argname, _) ->
-        unless (Text.length argname > 0) $ Left $! ProgramError EmptyName
+checkProgram (Program globals) = do
     _ <- catchProgramGlobalError $ traverse (checkGlobal ctx) globals
-    let argCtx = Map.fromList args
-    mainTy <- catchProgramMainError $ checkExpr (argCtx `Map.union` ctx) main
-    unless (TInt == mainTy) $
-        Left $! ProgramError (WrongType TInt mainTy)
+    case Map.lookup "main" ctx of
+      Nothing -> Left $! ProgramError $ NoMainFunction
+      Just mainty
+        | (args, ret) <- unfoldTArr mainty
+        , all (==TInt) args && ret == TInt
+        -> Right ()
+        | otherwise
+        -> Left $! ProgramError $ IllegalMainType mainty
   where
     ctx = Map.fromList $ map (globalName &&& globalType) globals
 
