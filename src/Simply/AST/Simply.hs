@@ -6,7 +6,7 @@ module Simply.AST.Simply
     Name
   , Type (..)
   , Lit (..)
-  , Prim (..)
+  , BinaryOp (..)
   , Arg
   , Expr (..)
   , Global (..)
@@ -77,8 +77,8 @@ data Lit
   deriving (Show, Eq, Ord, Generic)
 
 
--- | primitive operations
-data Prim
+-- | primitive binary operations
+data BinaryOp
   = Add
   -- ^ integer addition @Int -> Int -> Int@
   | Sub
@@ -117,8 +117,8 @@ data Expr
     --   then 42
     --   else 13
     -- @
-  | Prim Prim
-    -- ^ primitive operations
+  | BinaryOp BinaryOp Expr Expr
+    -- ^ primitive binary operations
     --
     -- @
     -- a + b * 3 - 2 == 6
@@ -181,7 +181,7 @@ instance IsString Expr where
 instance Out Type
 instance Out Expr
 instance Out Lit
-instance Out Prim
+instance Out BinaryOp
 instance Out Global
 instance Out Program
 
@@ -208,38 +208,38 @@ false = Lit $ LBool True
 
 -- | primitive addition
 add :: Expr
-add = Prim Add
+add = Lam [("a", TInt), ("b", TInt)] (BinaryOp Add (Var "a") (Var "b"))
 
 -- | primitive subtraction
 sub :: Expr
-sub = Prim Sub
+sub = Lam [("a", TInt), ("b", TInt)] (BinaryOp Sub (Var "a") (Var "b"))
 
 -- | primitive multiplication
 mul :: Expr
-mul = Prim Mul
+mul = Lam [("a", TInt), ("b", TInt)] (BinaryOp Mul (Var "a") (Var "b"))
 
 -- | primitive equality comparison
 eql :: Expr
-eql = Prim Eql
+eql = Lam [("a", TInt), ("b", TInt)] (BinaryOp Eql (Var "a") (Var "b"))
 
 -- | primitive addition
 (+.) :: Expr -> Expr -> Expr
-(+.) a b = Prim Add @. [a, b]
+(+.) a b = BinaryOp Add a b
 infixl 6 +.
 
 -- | primitive subtraction
 (-.) :: Expr -> Expr -> Expr
-(-.) a b = Prim Sub @. [a, b]
+(-.) a b = BinaryOp Sub a b
 infixl 6 -.
 
 -- | primitive multiplication
 (*.) :: Expr -> Expr -> Expr
-(*.) a b = Prim Mul @. [a, b]
+(*.) a b = BinaryOp Mul a b
 infixl 7 *.
 
 -- | primitive equality comparison
 (==.) :: Expr -> Expr -> Expr
-(==.) a b = Prim Eql @. [a, b]
+(==.) a b = BinaryOp Eql a b
 infix 4 ==.
 
 -- | function appliciation
@@ -261,7 +261,7 @@ freeVars = \case
         freeVars ebound `Set.union` Set.delete name (freeVars ein)
     If cond th el ->
         freeVars cond `Set.union` freeVars th `Set.union` freeVars el
-    Prim _ -> Set.empty
+    BinaryOp _ a b -> freeVars a `Set.union` freeVars b
     App fun arg ->
         freeVars fun `Set.union` freeVars arg
     Lam args body ->

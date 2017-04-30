@@ -157,10 +157,38 @@ checkExpr ctx expr = exprErrorTrace expr $ case expr of
     unless (tyTh == tyEl) $ throwExprError_ (TypeMismatch tyTh tyEl)
     pure tyTh
 
-  Prim Add -> pure $! TInt ->. TInt ->. TInt
-  Prim Sub -> pure $! TInt ->. TInt ->. TInt
-  Prim Mul -> pure $! TInt ->. TInt ->. TInt
-  Prim Eql -> pure $! TInt ->. TInt ->. TBool
+  BinaryOp Add a b -> do
+    tyA <- checkExpr ctx a
+    unless (tyA == TInt) $
+        throwExprError a (WrongType TInt tyA)
+    tyB <- checkExpr ctx b
+    unless (tyB == TInt) $
+        throwExprError b (WrongType TInt tyB)
+    pure TInt
+  BinaryOp Sub a b -> do
+    tyA <- checkExpr ctx a
+    unless (tyA == TInt) $
+        throwExprError a (WrongType TInt tyA)
+    tyB <- checkExpr ctx b
+    unless (tyB == TInt) $
+        throwExprError b (WrongType TInt tyB)
+    pure TInt
+  BinaryOp Mul a b -> do
+    tyA <- checkExpr ctx a
+    unless (tyA == TInt) $
+        throwExprError a (WrongType TInt tyA)
+    tyB <- checkExpr ctx b
+    unless (tyB == TInt) $
+        throwExprError b (WrongType TInt tyB)
+    pure TInt
+  BinaryOp Eql a b -> do
+    tyA <- checkExpr ctx a
+    unless (tyA == TInt) $
+        throwExprError a (WrongType TInt tyA)
+    tyB <- checkExpr ctx b
+    unless (tyB == TInt) $
+        throwExprError b (WrongType TInt tyB)
+    pure TBool
 
   App f x -> do
     fty <- checkExpr ctx f

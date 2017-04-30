@@ -89,16 +89,16 @@ codegenExpr expr = case expr of
     _ <- setBlock ifexit
     phi int [(trval, ifthen'), (flval, ifelse')]
 
-  Prim TInt Add [a,b] ->
+  BinaryOp TInt Add a b ->
     join $! add <$> codegenExpr a <*> codegenExpr b
 
-  Prim TInt Sub [a,b] ->
+  BinaryOp TInt Sub a b ->
     join $! sub <$> codegenExpr a <*> codegenExpr b
 
-  Prim TInt Mul [a,b] ->
+  BinaryOp TInt Mul a b ->
     join $! mul <$> codegenExpr a <*> codegenExpr b
 
-  Prim TBool Eql [a,b] ->
+  BinaryOp TBool Eql a b ->
     join $! icmp IP.EQ <$> codegenExpr a <*> codegenExpr b
 
   CallFunction retTy name args -> do

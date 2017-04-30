@@ -86,12 +86,6 @@ freshname pref = do
     pure $! pref <> show n
 
 
--- | add a global function definition
-deffun :: Name -> [IR.Arg] -> IR.Type -> IR.Expr -> Transform ()
-deffun name args retty body =
-    tell $ DList.singleton (IR.DefFunction name args retty body)
-
-
 -- | add a global closure definition
 defclosure :: Name -> [IR.Arg] -> [IR.Arg] -> IR.Type -> IR.Expr -> Transform ()
 defclosure name env args retty body =
@@ -198,31 +192,21 @@ transfExpr = \case
     (th', el') <- join $ promote <$> transfExpr th <*> transfExpr el
     pure $! IR.If (IR.exprType th') cond' th' el'
 
-  Prim prim -> do
-    let (pref, retty) = case prim of
-          Add -> ("add", IR.TInt)
-          Sub -> ("sub", IR.TInt)
-          Mul -> ("mul", IR.TInt)
-          Eql -> ("eql", IR.TBool)
-    name <- freshname $ "__" <> pref <> "_"
-    deffun name [("a", IR.TInt), ("b", IR.TInt)] retty $
-      IR.Prim retty prim [IR.LVar IR.TInt "a", IR.LVar IR.TInt "b"]
-    pure $! IR.GVar (IR.TFunction [IR.TInt, IR.TInt] retty) name
+  BinaryOp op a b -> do
+    let ty =
+          case op of
+            Add -> IR.TInt
+            Sub -> IR.TInt
+            Mul -> IR.TInt
+            Eql -> IR.TBool
+    a' <- convert IR.TInt =<< transfExpr a
+    b' <- convert IR.TInt =<< transfExpr b
+    pure $! IR.BinaryOp ty op a' b'
 
   app@(App _ _) ->
     case unfoldApp app of
       (f@(Var _name), args) ->
         join $ call <$> transfExpr f <*> traverse transfExpr args
-      (Prim prim, [a, b]) -> do
-        let retty = if prim == Eql then IR.TBool else IR.TInt
-        a' <- convert IR.TInt =<< transfExpr a
-        b' <- convert IR.TInt =<< transfExpr b
-        pure $! IR.Prim retty prim [a', b']
-      (Prim prim, [a]) -> do
-        let retty = if prim == Eql then IR.TBool else IR.TInt
-        a' <- convert IR.TInt =<< transfExpr a
-        liftClosure [("b", IR.TInt)] retty
-            (IR.Prim retty prim [a', IR.LVar IR.TInt "b"])
       (lam@(Lam _ _), args) -> do
         f' <- transfExpr lam
         args' <- traverse transfExpr args

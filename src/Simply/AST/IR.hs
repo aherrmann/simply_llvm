@@ -6,7 +6,7 @@ module Simply.AST.IR
     Name
   , Type (..)
   , Lit (..)
-  , Prim (..)
+  , BinaryOp (..)
   , Arg
   , Expr (..)
   , Global (..)
@@ -26,7 +26,7 @@ import Protolude hiding (Type)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Text.PrettyPrint.GenericPretty (Out)
-import Simply.AST.Simply (Name, Lit (..), Prim (..))
+import Simply.AST.Simply (Name, Lit (..), BinaryOp (..))
 import Simply.Orphans ()
 
 
@@ -72,7 +72,7 @@ data Expr
     -- ^ let-bindings
   | If Type Expr Expr Expr
     -- ^ conditional branches
-  | Prim Type Prim [Expr]
+  | BinaryOp Type BinaryOp Expr Expr
     -- ^ primitive operations (fully applied)
   | CallFunction Type Name [Expr]
     -- ^ function calls (fully applied)
@@ -123,7 +123,7 @@ exprType = \case
   GVar ty _ -> ty
   Let ty _ _ _ -> ty
   If ty _ _ _ -> ty
-  Prim ty _ _ -> ty
+  BinaryOp ty _ _ _ -> ty
   CallFunction ty _ _ -> ty
   MakeClosure ty _ _ -> ty
   CallClosure ty _ _ -> ty
@@ -140,7 +140,7 @@ freeVars = \case
       freeVars ebound `Map.union` Map.delete name (freeVars ein)
   If _ cond th el ->
       freeVars cond `Map.union` freeVars th `Map.union` freeVars el
-  Prim _ _ args -> Map.unions (map freeVars args)
+  BinaryOp _ _ a b -> freeVars a `Map.union` freeVars b
   CallFunction _ _ args -> Map.unions (map freeVars args)
   MakeClosure _ _ env -> Map.unions (map freeVars env)
   CallClosure _ fun args -> Map.unions (freeVars fun : map freeVars args)
