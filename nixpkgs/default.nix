@@ -5,8 +5,8 @@ let
   pkgs = import (fetchFromGitHub {
     owner = "NixOS";
     repo = "nixpkgs";
-    rev = "9ed5dbafe35d4cc9d1ddfdab2ceea971bd999662";
-    sha256 = "0phxbzaqd0xmkmiy04kyyfikff7g0bd9ikqnyagy8wflwx7bm0gi";
+    rev = "9b948ea439ddbaa26740ce35543e7e35d2aa6d18";
+    sha256 = "17208in65j29xsipzfdy5hi0nmqf836i28bkcihh18qys7669bj8";
   }) {};
 
   llvm-hs-repo = pkgs.fetchFromGitHub {
@@ -28,10 +28,11 @@ let
     haskellPackages = super.haskellPackages.override {
       overrides = self: super: with self; {
         hedgehog = callPackage ./hedgehog {};
-        hlint = hlint_2_0_5;
+        hlint = hlint_2_0_9;
         llvm-hs-pure = callPackage (import "${llvm-hs-repo}/llvm-hs-pure") {};
         llvm-hs = callPackage (import "${llvm-hs-repo}/llvm-hs") { llvm-config = llvm_4; };
         llvm-hs-pretty = callPackage (import llvm-hs-pretty-repo) {};
+        prettyprinter-ansi-terminal = callPackage ./prettyprinter-ansi-terminal {};
       };
     };
 

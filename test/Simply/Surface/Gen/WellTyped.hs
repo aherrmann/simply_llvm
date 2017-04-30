@@ -15,6 +15,7 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 import Simply.Surface.AST
+import Simply.Surface.Parse (keywords)
 
 
 type Context = Map Name Type
@@ -165,9 +166,10 @@ mbGenLam ty context
 
 genName :: Monad m => Gen m Name
 genName =
-  Gen.filter (/="main")
+  Gen.filter validName
   $ Text.cons <$> start <*> rest
   where
+    validName n = n /= "main" && n `Set.notMember` keywords
     start = Gen.lower
     rest  = Gen.text (Range.linear 0 5) (Gen.element chars)
     chars = ['a'..'z'] ++ ['A'..'Z'] ++ ['_', '\'']

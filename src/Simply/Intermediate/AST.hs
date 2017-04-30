@@ -28,9 +28,7 @@ import Protolude hiding (Type)
 
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Text.PrettyPrint.GenericPretty (Out)
 
-import Simply.Orphans ()
 import Simply.Surface.AST (Name, Lit (..), BinaryOp (..))
 
 
@@ -100,15 +98,6 @@ newtype Program
     -- ^ A program is a list of global definitions and a main function.
     -- We specify the return type explicitly.
   deriving (Show, Eq, Ord, Generic)
-
-
-----------------------------------------------------------------------
--- Instances
-
-instance Out Type
-instance Out Expr
-instance Out Global
-instance Out Program
 
 
 ----------------------------------------------------------------------

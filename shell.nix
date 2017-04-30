@@ -3,9 +3,7 @@ with (import ./nixpkgs);
 let
   ghc =
     haskellPackages.ghcWithHoogle (pkgs: with pkgs; [
-      ansi-wl-pprint
       dlist
-      GenericPretty
       hedgehog
       hspec
       libffi
@@ -13,15 +11,17 @@ let
       llvm-hs-pretty
       llvm-hs-pure
       managed
-      pretty
+      megaparsec
+      prettyprinter
+      prettyprinter-ansi-terminal
       protolude
+      show-prettyprint
     ]);
 in
 pkgs.stdenv.mkDerivation {
   name = "simply-llvm-env";
   buildInputs = [
-    cabal-install ghc llvm_4 clang_4
-    hlint
+    cabal-install hlint ghc llvm_4 clang_4
   ];
   shellHook = ''
     eval $(egrep ^export ${ghc}/bin/ghc)

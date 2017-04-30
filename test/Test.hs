@@ -9,6 +9,8 @@ import Test.Hspec.Hedgehog
 import Hedgehog
 
 import qualified Simply.Surface.AST as Simply
+import qualified Simply.Surface.Parse as Simply
+import qualified Simply.Surface.Pretty as Simply
 import qualified Simply.Surface.TypeCheck as Simply
 import qualified Simply.Intermediate.FromSurface as Intermediate
 import qualified Simply.LLVM.FromIntermediate as LLVM
@@ -16,8 +18,19 @@ import qualified Simply.LLVM.JIT as JIT
 
 import qualified Simply.Examples as Example
 
+import qualified Simply.Surface.Gen.IllTyped as IllTyped
 import qualified Simply.Surface.Gen.WellTyped as WellTyped
 
+
+prop_illTyped_prettyPrint_parse_roundTrip :: Property
+prop_illTyped_prettyPrint_parse_roundTrip = property $ do
+  ast <- forAll IllTyped.genProgram
+  tripping ast Simply.prettyPlainTextFast Simply.parseText
+
+prop_wellTyped_prettyPrint_parse_roundTrip :: Property
+prop_wellTyped_prettyPrint_parse_roundTrip = property $ do
+  ast <- forAll WellTyped.genProgram
+  tripping ast Simply.prettyPlainTextFast Simply.parseText
 
 prop_wellTyped_typeChecks :: Property
 prop_wellTyped_typeChecks = property $ do

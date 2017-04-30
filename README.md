@@ -30,8 +30,8 @@ $ stack repl
 and start exploring the code:
 
 ``` hs
-λ> ex01a_factorial & Simply.typeCheck >>= pp
-λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface >>= pp
+λ> ex01a_factorial & Simply.typeCheck >>= prettyPrint
+λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface >>= prettyPrint
 λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVM
 λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVMOpt optInline
 λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printAssemblyOpt optInline

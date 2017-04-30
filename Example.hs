@@ -4,7 +4,7 @@ module Main (module Main) where
 
 import Protolude
 
-import Text.PrettyPrint.GenericPretty (pp)
+import Text.Show.Prettyprint
 
 import Simply.Surface.AST
 import Simply.LLVM.JIT
@@ -15,8 +15,8 @@ import qualified Simply.Intermediate.FromSurface as Intermediate
 import qualified Simply.LLVM.FromIntermediate as LLVM
 
 ex1, ex2, ex3, ex4, ex5 :: IO ()
-ex1 = ex01a_factorial & Simply.typeCheck >>= pp
-ex2 = ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface >>= pp
+ex1 = ex01a_factorial & Simply.typeCheck >>= prettyPrint
+ex2 = ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface >>= prettyPrint
 ex3 = ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVM
 ex4 = ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVMOpt optInline
 ex5 = ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printAssemblyOpt optInline

@@ -24,7 +24,7 @@ import Control.Arrow ((&&&))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
-import Text.PrettyPrint.GenericPretty (Out, pp)
+import Text.Show.Prettyprint (prettyPrint)
 
 import Simply.Surface.AST
 
@@ -54,8 +54,6 @@ data ErrorCode
     -- ^ a program must have exactly one main function
   deriving (Show, Eq, Ord, Generic, Typeable)
 
-instance Out ErrorCode
-
 
 -- | A type error within an expression
 data ExprError
@@ -64,8 +62,6 @@ data ExprError
     -- and a trace of expressions
     -- in which the error occurred (outside in)
   deriving (Show, Eq, Ord, Generic, Typeable)
-
-instance Out ExprError
 
 
 -- | Extend the trace in an error by the given expression.
@@ -95,8 +91,6 @@ data GlobalError
     -- and the error that occurred in the body of the binding
   deriving (Show, Eq, Ord, Generic, Typeable)
 
-instance Out GlobalError
-
 
 -- | Forward an expression error
 -- in the body of a global binding
@@ -115,8 +109,6 @@ data ProgramError
   | ProgramGlobalError GlobalError
     -- ^ an error with a global binding
   deriving (Show, Eq, Ord, Generic, Typeable)
-
-instance Out ProgramError
 
 
 -- | Forward a global error
@@ -237,6 +229,6 @@ typeCheck :: Program -> IO Program
 typeCheck prog =
   case checkProgram prog of
     Left err -> do
-      pp err
+      prettyPrint err
       panic "Type-checking error"
     Right _ -> pure prog

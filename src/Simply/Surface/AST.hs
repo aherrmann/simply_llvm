@@ -34,7 +34,10 @@ module Simply.Surface.AST
 
     -- * Helpers
   , unfoldTArr
+  , flatTArr
   , foldTArr
+  , appPrecedence
+  , opPrecedence
   , unfoldApp
   , substitute
   , step
@@ -46,9 +49,6 @@ import Protolude hiding (Type)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.String (fromString)
-import Text.PrettyPrint.GenericPretty (Out)
-
-import Simply.Orphans ()
 
 
 ----------------------------------------------------------------------
@@ -181,13 +181,6 @@ newtype Program
 instance IsString Expr where
   fromString = Var . toS
 
-instance Out Type
-instance Out Expr
-instance Out Lit
-instance Out BinaryOp
-instance Out Global
-instance Out Program
-
 
 ----------------------------------------------------------------------
 -- Smart Constructors
@@ -292,9 +285,23 @@ unfoldTArr (TArr a b) = (a:args, ret)
   where (args, ret) = unfoldTArr b
 unfoldTArr ty = ([], ty)
 
+flatTArr :: Type -> [Type]
+flatTArr (TArr a b) = a : flatTArr b
+flatTArr ty = [ty]
+
 -- | inverse of 'unfoldTArr'
 foldTArr :: [Type] -> Type -> Type
 foldTArr = flip (foldr TArr)
+
+appPrecedence :: Int
+appPrecedence = 5
+
+opPrecedence :: BinaryOp -> Int
+opPrecedence = \case
+  Mul -> 4
+  Add -> 2
+  Sub -> 2
+  Eql -> 1
 
 -- | flatten a nested application
 --

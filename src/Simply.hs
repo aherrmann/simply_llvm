@@ -1,12 +1,11 @@
-{-# OPTIONS_GHC -fno-warn-unused-imports #-}
+{-# OPTIONS_GHC -fno-warn-unused-imports -fno-warn-dodgy-exports #-}
 
 module Simply (module Simply) where
 
 import Protolude hiding (Type)
 
-import Text.PrettyPrint.GenericPretty (pp)
-
 import LLVM.Pretty (ppllvm)
+import Text.Show.Prettyprint
 
 import Simply.Surface.AST
 import qualified Simply.Intermediate.AST as Intermediate
