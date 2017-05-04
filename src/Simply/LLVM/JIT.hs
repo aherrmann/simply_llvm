@@ -10,6 +10,9 @@ module Simply.LLVM.JIT
   , exec
   , execOpt
 
+  , call
+  , callOpt
+
   , optNone
   , optNoinline
   , optInline
@@ -18,6 +21,7 @@ module Simply.LLVM.JIT
 
 import Protolude
 import Data.String (String)
+import Data.IORef
 
 import Foreign.LibFFI
 
@@ -102,6 +106,31 @@ execOpt opt args llvmAst = runJit $ do
 
 exec :: [Int32] -> AST.Module -> IO ()
 exec = execOpt optNone
+
+callOpt :: Optimizer -> [Int32] -> AST.Module -> IO Int32
+callOpt opt args llvmAst = withRef $ \res -> runJit $ do
+    context <- ContT withContext
+    m <- parseModule context llvmAst
+    _ <- liftIO $ opt context m
+    engine <-
+        ContT $ EE.withMCJIT context optlevel model framePtrElim fastInstr
+    bin <- ContT $ EE.withModuleInEngine engine m
+    mbMainfn <- liftIO $ EE.getFunction bin (AST.Name "__main")
+    mainfn <- maybe (throwIO $ ProgramError "No main function") pure mbMainfn
+    liftIO $ writeIORef res =<< callFFI mainfn retInt32 (map argInt32 args)
+  where
+    optlevel = Just 0
+    model = Nothing
+    framePtrElim = Nothing
+    fastInstr = Nothing
+    withRef :: (IORef Int32 -> IO ()) -> IO Int32
+    withRef f = do
+      ref <- newIORef 0
+      f ref
+      readIORef ref
+
+call :: [Int32] -> AST.Module -> IO Int32
+call = callOpt optNone
 
 
 ----------------------------------------------------------------------

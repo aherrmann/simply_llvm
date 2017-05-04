@@ -11,6 +11,7 @@ let
       ansi-wl-pprint
       pretty
       GenericPretty
+      hspec
     ]);
 in
 pkgs.stdenv.mkDerivation {

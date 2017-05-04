@@ -54,3 +54,20 @@ library
                      , bytestring >=0.10 && <0.11
   hs-source-dirs:      src
   default-language:    Haskell2010
+
+Test-Suite test-simply
+  type:                exitcode-stdio-1.0
+  main-is:             Test.hs
+  ghc-options:         -Wall -threaded -O2
+  default-extensions:  NoImplicitPrelude
+                       OverloadedStrings
+                       LambdaCase
+                       GeneralizedNewtypeDeriving
+  other-extensions:    TemplateHaskell
+                     , TupleSections
+  build-depends:       base >=4.8 && <4.10
+                     , protolude >=0.1.7 && <0.1.11
+                     , hspec >=2.4 && <2.5
+                     , simply-llvm
+  hs-source-dirs:      test
+  default-language:    Haskell2010
