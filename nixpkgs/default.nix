@@ -27,6 +27,7 @@ let
 
     haskellPackages = super.haskellPackages.override {
       overrides = self: super: with self; {
+        hedgehog = callPackage ./hedgehog {};
         llvm-hs-pure = callPackage (import "${llvm-hs-repo}/llvm-hs-pure") {};
         llvm-hs = callPackage (import "${llvm-hs-repo}/llvm-hs") { llvm-config = llvm_4; };
         llvm-hs-pretty = callPackage (import llvm-hs-pretty-repo) {};

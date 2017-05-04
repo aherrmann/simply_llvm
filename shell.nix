@@ -6,6 +6,7 @@ let
       ansi-wl-pprint
       dlist
       GenericPretty
+      hedgehog
       hspec
       libffi
       llvm-hs

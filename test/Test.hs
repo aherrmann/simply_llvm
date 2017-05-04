@@ -1,3 +1,7 @@
+{-# LANGUAGE TemplateHaskell #-}
+
+module Main where
+
 import Protolude
 
 import Test.Hspec

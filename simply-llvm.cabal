@@ -70,7 +70,10 @@ Test-Suite test-simply
                      , TupleSections
   build-depends:       base >=4.8 && <4.10
                      , protolude >=0.1.7 && <0.1.11
+                     , hedgehog >=0.3 && <0.4
                      , hspec >=2.4 && <2.5
+                     , hspec-core >=2.4 && <2.5
+                     , QuickCheck >=2.9 && <2.10
                      , simply-llvm
   hs-source-dirs:      test
   default-language:    Haskell2010
