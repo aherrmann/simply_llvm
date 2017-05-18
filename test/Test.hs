@@ -5,6 +5,8 @@ module Main where
 import Protolude
 
 import Test.Hspec
+import Test.Hspec.Hedgehog
+import Hedgehog
 
 import qualified Simply.Surface.AST as Simply
 import qualified Simply.Surface.TypeCheck as Simply
@@ -13,6 +15,14 @@ import qualified Simply.LLVM.FromIntermediate as LLVM
 import qualified Simply.LLVM.JIT as JIT
 
 import qualified Simply.Examples as Example
+
+import qualified Simply.Surface.Gen.WellTyped as WellTyped
+
+
+prop_wellTyped_typeChecks :: Property
+prop_wellTyped_typeChecks = property $ do
+  program <- forAll WellTyped.genProgram
+  liftEither $ Simply.checkProgram program
 
 
 withProgram :: Simply.Program -> (([Int32] -> IO Int32) -> IO a) -> IO a
@@ -40,6 +50,8 @@ factorial = go 1
 
 main :: IO ()
 main = hspec $ do
+
+  describeGroup $$(discover)
 
   describe "Example.ex01a_factorial" $ do
     let prog = Example.ex01a_factorial

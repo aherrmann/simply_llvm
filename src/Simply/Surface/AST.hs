@@ -36,6 +36,9 @@ module Simply.Surface.AST
   , unfoldTArr
   , foldTArr
   , unfoldApp
+  , substitute
+  , step
+  , apply
   ) where
 
 import Protolude hiding (Type)
@@ -303,3 +306,72 @@ unfoldApp = go []
   where
     go args (App fun arg) = go (arg:args) fun
     go args fun = (fun, args)
+
+substitute :: (Name, Expr) -> Expr -> Expr
+substitute (name, subst) = \case
+
+    Lit lit -> Lit lit
+
+    Var name'
+      | name' == name -> subst
+      | otherwise -> Var name'
+
+    Let name' bound body ->
+      let
+        bound' = recurse bound
+        body'
+          | name' /= name = recurse body
+          | otherwise = body
+      in
+      Let name' bound' body'
+
+    If cond then_ else_ ->
+      If (recurse cond) (recurse then_) (recurse else_)
+
+    BinaryOp op a b ->
+      BinaryOp op (recurse a) (recurse b)
+
+    App f a ->
+      App (recurse f) (recurse a)
+
+    Lam arglist body
+      | name `notElem` [ argname | (argname, _) <- arglist ]
+      -> Lam arglist (recurse body)
+      | otherwise
+      -> Lam arglist body
+
+  where
+    recurse = substitute (name, subst)
+
+step :: Expr -> Maybe Expr
+step = \case
+  Lit _ -> Nothing
+  Var _ -> Nothing
+  Let name bound body -> Just (substitute (name, bound) body)
+  If (Lit (LBool True)) then_ _ -> Just then_
+  If (Lit (LBool False)) _ else_ -> Just else_
+  If cond then_ else_ -> do
+    cond' <- step cond
+    Just (If cond' then_ else_)
+  BinaryOp op (Lit (LInt a)) (Lit (LInt b)) ->
+    case op of
+      Add -> Just $ Lit $ LInt $ a + b
+      Sub -> Just $ Lit $ LInt $ a - b
+      Mul -> Just $ Lit $ LInt $ a * b
+      Eql -> Just $ Lit $ LBool $ a == b
+  BinaryOp op a b ->
+    flip (BinaryOp op) b <$> step a
+    <|> BinaryOp op a <$> step b
+  App f a ->
+    (flip App) a <$> step f
+    <|> App f <$> step a
+    <|> apply f a
+  Lam _ _ -> Nothing
+
+apply :: Expr -> Expr -> Maybe Expr
+apply (Lam ((name, _):arglist) body) arg
+  | null arglist = Just body'
+  | otherwise    = Just $ Lam arglist body'
+  where
+    body' = substitute (name, arg) body
+apply _ _ = Nothing
