@@ -1,12 +1,8 @@
 module Simply.LLVM.Codegen where
 
 import Protolude hiding (Type, local, void, local, one, zero)
-import Data.Word
-import Data.Function
 import qualified Data.Map as Map
 import qualified Data.List as List
-
-import Control.Applicative
 
 import LLVM.AST hiding (callingConvention, functionAttributes)
 import LLVM.AST.Type
@@ -30,7 +26,7 @@ newtype LLVM a = LLVM (State AST.Module a)
   deriving (Functor, Applicative, Monad, MonadState AST.Module )
 
 runLLVM :: AST.Module -> LLVM a -> AST.Module
-runLLVM mod (LLVM m) = execState m mod
+runLLVM llvmAst (LLVM m) = execState m llvmAst
 
 emptyModule :: Text -> AST.Module
 emptyModule label = defaultModule { moduleName = toS label }
@@ -54,7 +50,7 @@ define retty label argtys body = addDefn $
   }
   where
     bls = createBlocks $ execCodegen $ do
-      setBlock =<< addBlock entryBlockName
+      _ <- setBlock =<< addBlock entryBlockName
       body
 
 
@@ -72,7 +68,7 @@ internal retty label argtys body = addDefn $
   }
   where
     bls = createBlocks $ execCodegen $ do
-      setBlock =<< addBlock entryBlockName
+      _ <- setBlock =<< addBlock entryBlockName
       body
 
 
@@ -138,23 +134,28 @@ closureEnv elemty =
 -- Constants
 -------------------------------------------------------------------------------
 
+cint, cint32 :: Integer -> Operand
 cint = cons . C.Int 32
 cint32 = cons . C.Int 32
 
+one, zero :: Operand
 one = cons $ C.Int 32 1
 zero = cons $ C.Int 32 0
 
+false, true :: Operand
 false = cons $ C.Int 1 0
 true = cons $ C.Int 1 1
 
 -- undefined value
 --
 -- (used for building a structure)
+undef :: Type -> Operand
 undef ty = cons (C.Undef ty)
 
 -- null pointer
 --
 -- (used for closures without capture)
+nullP :: Type -> Operand
 nullP ty = cons (C.Null ty)
 
 -------------------------------------------------------------------------------
@@ -381,13 +382,13 @@ sizeof ty = do
 
 -- | call according to C calling convention
 ccall :: Type -> Operand -> [Operand] -> Codegen Operand
-ccall ty fn args = instr ty $ Call Nothing CC.C [] (Right fn) (toArgs args) [] []
+ccall ty fun arglist = instr ty $ Call Nothing CC.C [] (Right fun) (toArgs arglist) [] []
 
 -- | call according to fast calling convention
 --
 -- needs to match calling convention in function definition
 call :: Type -> Operand -> [Operand] -> Codegen Operand
-call ty fn args = instr ty $ Call Nothing CC.Fast [] (Right fn) (toArgs args) [] []
+call ty fun arglist = instr ty $ Call Nothing CC.Fast [] (Right fun) (toArgs arglist) [] []
 
 -- | allocate space on the stack
 alloca :: Type -> Codegen Operand
@@ -405,7 +406,7 @@ store :: Operand -> Operand -> Codegen Operand
 store dst val = instr void $ Store False dst val Nothing 0 []
 
 load :: Type -> Operand -> Codegen Operand
-load ty ptr = instr ty $ Load False ptr Nothing 0 []
+load ty pointer = instr ty $ Load False pointer Nothing 0 []
 
 -- | pointer arithmetic
 --
@@ -413,7 +414,7 @@ load ty ptr = instr ty $ Load False ptr Nothing 0 []
 --   @int*@ could refer to an array of integers
 -- further indices index into structure elements
 getElementPtr :: Type -> Operand -> [Operand] -> Codegen Operand
-getElementPtr ty addr idx = instr ty $ GetElementPtr False addr idx []
+getElementPtr ty addr ix = instr ty $ GetElementPtr False addr ix []
 
 -- | get the environment pointer (with correct type) out of a closure
 getClosureEnvPtr :: AST.Name -> [Type] -> Codegen Operand
@@ -422,10 +423,10 @@ getClosureEnvPtr envName elemty = do
   bitcast (ptr $ closureEnv elemty) envPtr
 
 extractValue :: Type -> Operand -> [Word32] -> Codegen Operand
-extractValue ty struct idx = instr ty $ ExtractValue struct idx []
+extractValue ty struct ix = instr ty $ ExtractValue struct ix []
 
 insertValue :: Type -> Operand -> Operand -> [Word32] -> Codegen Operand
-insertValue ty struct val idx = instr ty $ InsertValue struct val idx []
+insertValue ty struct val ix = instr ty $ InsertValue struct val ix []
 
 buildStruct :: Type -> [Operand] -> Codegen Operand
 buildStruct ty elems = foldM insert (undef ty) (zip [0..] elems)

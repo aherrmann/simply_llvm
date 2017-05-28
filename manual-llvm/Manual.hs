@@ -8,7 +8,6 @@ import qualified LLVM.AST as AST
 import LLVM.AST.Global
 import LLVM.Context
 import LLVM.Module
-import LLVM.PrettyPrint
 
 
 int :: Type
@@ -44,11 +43,10 @@ module_ = defaultModule
   }
 
 
-toLLVM mod = withContext $ \ctx -> do
-    errOrLLVM <- runExceptT $ withModuleFromAST ctx mod moduleLLVMAssembly
-    case errOrLLVM of
-      Left err -> putStrLn $ "error: " ++ err
-      Right llvm -> putStrLn llvm
+toLLVM :: AST.Module -> IO ()
+toLLVM llvmAst = withContext $ \ctx -> do
+    llvm <- withModuleFromAST ctx llvmAst moduleLLVMAssembly
+    putStrLn llvm
 
 
 -- $ ghci Codegen.hs

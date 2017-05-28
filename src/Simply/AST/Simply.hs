@@ -39,12 +39,13 @@ module Simply.AST.Simply
   ) where
 
 import Protolude hiding (Type)
-import Control.Arrow ((&&&))
+
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.String (fromString)
 import Text.PrettyPrint.GenericPretty (Out)
-import Simply.Orphans
+
+import Simply.Orphans ()
 
 
 ----------------------------------------------------------------------

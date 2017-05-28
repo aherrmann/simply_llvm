@@ -10,12 +10,7 @@ import Simply.LLVM.Codegen
 
 import LLVM.AST.Type
 import qualified LLVM.AST as AST
-import qualified LLVM.AST.Constant as C
 import qualified LLVM.AST.IntegerPredicate as IP
-import LLVM.Context
-import LLVM.Module
-import LLVM.PassManager
-import LLVM.Target
 
 
 ----------------------------------------------------------------------
@@ -39,8 +34,8 @@ transform prog = runLLVM initModule (codegenProg prog)
 llvmType :: IR.Type -> AST.Type
 llvmType TInt = int
 llvmType TBool = ibool
-llvmType (TFunction args ret) = fn (llvmType ret) (map llvmType args)
-llvmType (TClosure args ret) = closure (llvmType ret) (map llvmType args)
+llvmType (TFunction args retty) = fn (llvmType retty) (map llvmType args)
+llvmType (TClosure args retty) = closure (llvmType retty) (map llvmType args)
 
 
 -- | Transform an IR expression to LLVM.
@@ -53,46 +48,46 @@ codegenExpr expr = case expr of
   Lit TBool (LBool x) ->
     pure $! bool false true x
   
-  LVar ty x ->
+  LVar _ty x ->
     getvar (toS x)
 
   GVar ty x ->
     pure $! cons $ global (llvmType ty) (AST.Name $ toS x)
 
-  Let ty name ebound ein -> do
+  Let _ty name ebound ein -> do
     ebound' <- codegenExpr ebound
     assign (toS name) ebound'
     codegenExpr ein
 
-  If ty cond tr fl  -> do
+  If _ty cond tr fl  -> do
     ifthen <- addBlock "if.then"
     ifelse <- addBlock "if.else"
     ifexit <- addBlock "if.exit"
 
     -- %entry
     ------------------
-    cond <- codegenExpr cond
-    test <- icmp IP.EQ true cond
-    cbr test ifthen ifelse
+    condition <- codegenExpr cond
+    test <- icmp IP.EQ true condition
+    _ <- cbr test ifthen ifelse
 
     -- if.then
     ------------------
-    setBlock ifthen
+    _ <- setBlock ifthen
     trval <- codegenExpr tr
-    br ifexit
-    ifthen <- getBlock
+    _ <- br ifexit
+    ifthen' <- getBlock
 
     -- if.else
     ------------------
-    setBlock ifelse
+    _ <- setBlock ifelse
     flval <- codegenExpr fl
-    br ifexit
-    ifelse <- getBlock
+    _ <- br ifexit
+    ifelse' <- getBlock
 
     -- if.exit
     ------------------
-    setBlock ifexit
-    phi int [(trval, ifthen), (flval, ifelse)]
+    _ <- setBlock ifexit
+    phi int [(trval, ifthen'), (flval, ifelse')]
 
   Prim TInt Add [a,b] ->
     join $! add <$> codegenExpr a <*> codegenExpr b
@@ -167,10 +162,10 @@ codegenGlobal (DefClosure name env args retty body) = do
     -- extract closure environment
     unless (null env) $ do
       envptr <- getClosureEnvPtr envname (map fst env')
-      forM_ (zip [0..] env') $ \(i, (ty, AST.Name name)) -> do
+      forM_ (zip [0..] env') $ \(i, (ty, AST.Name n)) -> do
           p <- getElementPtr (ptr ty) envptr [cint32 0, cint32 i]
           v <- load ty p
-          assign (toS name) v
+          assign (toS n) v
 
     codegenBody args' body
 

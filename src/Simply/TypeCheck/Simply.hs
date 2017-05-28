@@ -204,7 +204,7 @@ checkProgram :: Program -> Either ProgramError ()
 checkProgram (Program globals args main) = do
     forM_ args $ \(argname, _) ->
         unless (Text.length argname > 0) $ Left $! ProgramError EmptyName
-    catchProgramGlobalError $ traverse (checkGlobal ctx) globals
+    _ <- catchProgramGlobalError $ traverse (checkGlobal ctx) globals
     let argCtx = Map.fromList args
     mainTy <- catchProgramMainError $ checkExpr (argCtx `Map.union` ctx) main
     unless (TInt == mainTy) $

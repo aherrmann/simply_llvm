@@ -19,21 +19,16 @@ module Simply.LLVM.JIT
 import Protolude
 import Data.String (String)
 
-import Data.Int
-import Data.Word
 import Foreign.LibFFI
 
 import Control.Monad.Cont
-import Control.Monad.Except
 
 import LLVM.Target
 import LLVM.Context
-import LLVM.CodeModel
 import LLVM.Module as Mod
 import qualified LLVM.AST as AST
 
 import LLVM.PassManager
-import LLVM.Transforms
 import LLVM.Analysis
 
 import qualified LLVM.ExecutionEngine as EE
@@ -49,15 +44,6 @@ data JitError
 
 instance Exception JitError
 
-throwLeft :: MonadIO m => ExceptT String m a -> m a
-throwLeft a = do
-    errOrRes <- runExceptT a
-    case errOrRes of
-      Left err ->
-        throwIO . LLVMError $! "LLVM Error: " <> toS err
-      Right res ->
-        pure res
-
 
 ----------------------------------------------------------------------
 -- The JIT
@@ -68,16 +54,16 @@ runJit :: Jit a -> IO ()
 runJit = flip runContT (const $ pure ())
 
 parseModule :: Context -> AST.Module -> Jit Module
-parseModule ctx mod = do
-    m <- ContT $ withModuleFromAST ctx mod
+parseModule ctx llvmAst = do
+    m <- ContT $ withModuleFromAST ctx llvmAst
     liftIO $ verify m
     pure m
 
 printLLVMOpt :: Optimizer -> AST.Module -> IO ()
-printLLVMOpt opt mod = runJit $ do
+printLLVMOpt opt llvmAst = runJit $ do
     context <- ContT withContext
-    m <- parseModule context mod
-    liftIO $ opt context m
+    m <- parseModule context llvmAst
+    _ <- liftIO $ opt context m
     s <- liftIO $ moduleLLVMAssembly m
     liftIO $ putStrLn s
 
@@ -85,10 +71,10 @@ printLLVM :: AST.Module -> IO ()
 printLLVM = printLLVMOpt optNone
 
 printAssemblyOpt :: Optimizer -> AST.Module -> IO ()
-printAssemblyOpt opt mod = runJit $ do
+printAssemblyOpt opt llvmAst = runJit $ do
     context <- ContT withContext
-    m <- parseModule context mod
-    liftIO $ opt context m
+    m <- parseModule context llvmAst
+    _ <- liftIO $ opt context m
     machine <- ContT $ withHostTargetMachine
     s <- liftIO $ moduleTargetAssembly machine m
     liftIO $ putStrLn s
@@ -97,10 +83,10 @@ printAssembly :: AST.Module -> IO ()
 printAssembly = printAssemblyOpt optNone
 
 execOpt :: Optimizer -> [Int32] -> AST.Module -> IO ()
-execOpt opt args mod = runJit $ do
+execOpt opt args llvmAst = runJit $ do
     context <- ContT withContext
-    m <- parseModule context mod
-    liftIO $ opt context m
+    m <- parseModule context llvmAst
+    _ <- liftIO $ opt context m
     engine <-
         ContT $ EE.withMCJIT context optlevel model framePtrElim fastInstr
     bin <- ContT $ EE.withModuleInEngine engine m
@@ -127,8 +113,8 @@ optNone :: Optimizer
 optNone _ _ = pure False
 
 optNoinline :: Optimizer
-optNoinline context mod = withPassManager passes $ \pm ->
-    runPassManager pm mod
+optNoinline _context llvmAst = withPassManager passes $ \pm ->
+    runPassManager pm llvmAst
   where
     passes = defaultCuratedPassSetSpec
       { optLevel = Just 3
@@ -139,8 +125,8 @@ optNoinline context mod = withPassManager passes $ \pm ->
       }
 
 optInline :: Optimizer
-optInline context mod = withPassManager passes $ \pm ->
-    runPassManager pm mod
+optInline _context llvmAst = withPassManager passes $ \pm ->
+    runPassManager pm llvmAst
   where
     passes = defaultCuratedPassSetSpec
       { optLevel = Just 3
@@ -152,7 +138,7 @@ optInline context mod = withPassManager passes $ \pm ->
       }
 
 optTarget :: Optimizer
-optTarget context mod = flip runContT pure $ do
+optTarget _context llvmAst = flip runContT pure $ do
     triple <- liftIO getProcessTargetTriple
     machine <- ContT $ withHostTargetMachine
     libraryInfo <- ContT $ withTargetLibraryInfo triple
@@ -169,4 +155,4 @@ optTarget context mod = flip runContT pure $ do
           , targetMachine = Just machine
           }
     pm <- ContT $ withPassManager passes
-    liftIO $ runPassManager pm mod
+    liftIO $ runPassManager pm llvmAst

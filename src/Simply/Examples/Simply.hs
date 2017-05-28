@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
+
 module Simply.Examples.Simply where
 
 import Protolude hiding (Type)

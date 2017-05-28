@@ -13,8 +13,6 @@ import Data.DList (DList)
 import qualified Data.DList as DList
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Set (Set)
-import qualified Data.Set as Set
 import Simply.AST.Simply
 import qualified Simply.AST.IR as IR
 
@@ -172,16 +170,6 @@ convert ty expr =
       _ -> panic "Invalid convert"
 
 
--- | Assert that an expression has a certain type.
---
--- This exists because exceptions in Haskell are easier to debug
--- than segmentation faults, or failed assertions in C++ code.
-assertType :: IR.Type -> IR.Expr -> Transform ()
-assertType ty expr
-  | IR.exprType expr == ty = pure ()
-  | otherwise = panic "Type mismatch!"
-
-
 -- | transform a "Simply" expression to IR
 --
 -- The function is partial and fails on ill-formed expressions.
@@ -223,7 +211,7 @@ transfExpr = \case
 
   app@(App _ _) ->
     case unfoldApp app of
-      (f@(Var name), args) ->
+      (f@(Var _name), args) ->
         join $ call <$> transfExpr f <*> traverse transfExpr args
       (Prim prim, [a, b]) -> do
         let retty = if prim == Eql then IR.TBool else IR.TInt
@@ -242,7 +230,7 @@ transfExpr = \case
       (f, args) ->
         join $ call <$> transfExpr f <*> traverse transfExpr args
 
-  lam@(Lam args body) -> do
+  Lam args body -> do
     let args' = map (second transfType) args
     body' <- addLocalCtx args' $ transfExpr body
     let retty = IR.exprType body'
@@ -270,7 +258,7 @@ call f args = do
         case f of
           IR.GVar (IR.TFunction _ _) name ->
             pure $! IR.CallFunction retty name args'
-          IR.LVar (IR.TFunction _ _) name ->
+          IR.LVar (IR.TFunction _ _) _name ->
             panic "Can only call global functions!"
           _ ->
             pure $! IR.CallClosure retty f args'
@@ -322,7 +310,7 @@ transfGlobal (Def name args retty body) =
 
 -- | transform a program in "Simply" to IR
 transfProgram :: Program -> Transform IR.Program
-transfProgram prog@(Program glbls args main) =
+transfProgram (Program glbls args main) =
     addGlobalCtx ctx $ do
         glbls' <- traverse transfGlobal glbls
         let args' = map (second transfType) args
@@ -331,5 +319,5 @@ transfProgram prog@(Program glbls args main) =
         pure $! IR.Program glbls' args' retty' main'
   where
     ctx = map (globalName &&& transfGlobalType) glbls
-    transfGlobalType (Def _ args retty _) =
-        IR.TFunction (map (transfType . snd) args) (transfType retty)
+    transfGlobalType (Def _ args' retty _) =
+        IR.TFunction (map (transfType . snd) args') (transfType retty)
