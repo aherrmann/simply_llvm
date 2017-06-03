@@ -10,40 +10,147 @@ module Simply.LLVM.JIT
   , exec
   , execOpt
 
-  , call
-  , callOpt
+  , withExec
+  , withExecOpt
 
   , optNone
   , optNoinline
   , optInline
   , optTarget
+
+  , verifyModule
+  , VerifyException (..)
   ) where
 
 import Protolude
-import Data.String (String)
-import Data.IORef
 
-import Foreign.LibFFI
+import Control.Monad.Managed
+  (Managed, MonadManaged, managed, runManaged, using, with)
+import Foreign.LibFFI (argInt32, callFFI, retInt32)
 
-import Control.Monad.Cont
-
-import LLVM.Target
-import LLVM.Context
-import LLVM.Module as Mod
 import qualified LLVM.AST as AST
 
+import LLVM.Analysis (verify)
+import LLVM.AST.DataLayout (DataLayout)
+import LLVM.Context (Context, withContext)
+import LLVM.Exception (VerifyException (..))
+import LLVM.ExecutionEngine (getFunction, withMCJIT, withModuleInEngine)
+import LLVM.Module
+  (Module, withModuleFromAST, moduleLLVMAssembly, moduleTargetAssembly)
 import LLVM.PassManager
-import LLVM.Analysis
+  ( PassManager, PassSetSpec (..)
+  , defaultCuratedPassSetSpec, runPassManager, withPassManager
+  )
+import LLVM.Target
+  ( TargetLibraryInfo, TargetMachine
+  , getTargetMachineDataLayout, getProcessTargetTriple
+  , withHostTargetMachine, withTargetLibraryInfo
+  )
 
-import qualified LLVM.ExecutionEngine as EE
+
+----------------------------------------------------------------------
+-- IO Interface for Convenience
+
+printLLVM :: AST.Module -> IO ()
+printLLVM = printLLVMOpt optNone
+
+printLLVMOpt :: Optimizer -> AST.Module -> IO ()
+printLLVMOpt opt ast = runManaged . runJit $ do
+  m <- moduleFromAST ast
+  opt m
+  s <- llvmIRFromModule m
+  liftIO $ putStrLn s
+
+printAssembly :: AST.Module -> IO ()
+printAssembly = printAssemblyOpt optNone
+
+printAssemblyOpt :: Optimizer -> AST.Module -> IO ()
+printAssemblyOpt opt ast = runManaged . runJit $ do
+  m <- moduleFromAST ast
+  opt m
+  s <- assemblyFromModule m
+  liftIO $ putStrLn s
+
+exec :: [Int32] -> AST.Module -> IO Int32
+exec = execOpt optNone
+
+execOpt :: Optimizer -> [Int32] -> AST.Module -> IO Int32
+execOpt opt args ast = withExecOpt opt ast (\prog -> prog args)
+
+withExec :: AST.Module -> (([Int32] -> IO Int32) -> IO a) -> IO a
+withExec = withExecOpt optNone
+
+withExecOpt
+  :: Optimizer
+  -> AST.Module
+  -> (([Int32] -> IO Int32) -> IO a)
+  -> IO a
+withExecOpt opt ast = withJit $ do
+  m <- moduleFromAST ast
+  opt m
+  compile m
+
+verifyModule :: AST.Module -> IO (Either VerifyException ())
+verifyModule ast = withJit (moduleFromAST ast) (liftIO . try . verify)
+
+
+----------------------------------------------------------------------
+-- Optimizers
+
+type Optimizer = Module -> Jit ()
+
+optNone :: Optimizer
+optNone _ = pure ()
+
+passOptNoinline :: PassSetSpec
+passOptNoinline = defaultCuratedPassSetSpec
+  { optLevel = Just 3
+  , sizeLevel = Just 1
+  , simplifyLibCalls = Just True
+  , loopVectorize = Just True
+  , superwordLevelParallelismVectorize = Just True
+  }
+
+optNoinline :: Optimizer
+optNoinline m = do
+  pm <- passManager passOptNoinline
+  void . liftIO $ runPassManager pm m
+
+passOptInline :: PassSetSpec
+passOptInline = passOptNoinline
+  { useInlinerWithThreshold = Just 225 }
+
+optInline :: Optimizer
+optInline m = do
+  pm <- passManager passOptInline
+  void . liftIO $ runPassManager pm m
+
+passOptTarget :: DataLayout -> TargetLibraryInfo -> TargetMachine -> PassSetSpec
+passOptTarget layout libraryInfo machine = passOptInline
+  { dataLayout = Just layout
+  , targetLibraryInfo = Just libraryInfo
+  , targetMachine = Just machine
+  }
+
+optTarget :: Optimizer
+optTarget m = do
+  triple <- liftIO getProcessTargetTriple
+  machine <- using $ managed withHostTargetMachine
+  libraryInfo <- using $ managed (withTargetLibraryInfo triple)
+  layout <- liftIO $ getTargetMachineDataLayout machine
+  pm <- passManager (passOptTarget layout libraryInfo machine)
+  void . liftIO $ runPassManager pm m
+
+passManager :: PassSetSpec -> Jit PassManager
+passManager passes =
+  using $ managed (withPassManager passes)
 
 
 ----------------------------------------------------------------------
 -- Error Handling
 
 data JitError
-  = LLVMError String
-  | ProgramError String
+  = MissingEntryPoint
   deriving (Show, Eq, Ord, Typeable)
 
 instance Exception JitError
@@ -52,136 +159,42 @@ instance Exception JitError
 ----------------------------------------------------------------------
 -- The JIT
 
-type Jit a = ContT () IO a
+newtype Jit a = Jit (ReaderT Context Managed a)
+  deriving
+    ( Functor, Applicative, Monad
+    , MonadReader Context, MonadIO, MonadManaged
+    )
 
-runJit :: Jit a -> IO ()
-runJit = flip runContT (const $ pure ())
+runJit :: Jit a -> Managed a
+runJit (Jit m) = do
+  ctx <- using $ managed withContext
+  runReaderT m ctx
 
-parseModule :: Context -> AST.Module -> Jit Module
-parseModule ctx llvmAst = do
-    m <- ContT $ withModuleFromAST ctx llvmAst
-    liftIO $ verify m
-    pure m
+withJit :: Jit a -> (a -> IO r) -> IO r
+withJit = with . runJit
 
-printLLVMOpt :: Optimizer -> AST.Module -> IO ()
-printLLVMOpt opt llvmAst = runJit $ do
-    context <- ContT withContext
-    m <- parseModule context llvmAst
-    _ <- liftIO $ opt context m
-    s <- liftIO $ moduleLLVMAssembly m
-    liftIO $ putStrLn s
+moduleFromAST :: AST.Module -> Jit Module
+moduleFromAST ast = do
+  ctx <- ask
+  using $ managed (withModuleFromAST ctx ast)
 
-printLLVM :: AST.Module -> IO ()
-printLLVM = printLLVMOpt optNone
+llvmIRFromModule :: Module -> Jit ByteString
+llvmIRFromModule = liftIO . moduleLLVMAssembly
 
-printAssemblyOpt :: Optimizer -> AST.Module -> IO ()
-printAssemblyOpt opt llvmAst = runJit $ do
-    context <- ContT withContext
-    m <- parseModule context llvmAst
-    _ <- liftIO $ opt context m
-    machine <- ContT $ withHostTargetMachine
-    s <- liftIO $ moduleTargetAssembly machine m
-    liftIO $ putStrLn s
+assemblyFromModule :: Module -> Jit ByteString
+assemblyFromModule m = do
+  machine <- using $ managed withHostTargetMachine
+  liftIO $ moduleTargetAssembly machine m
 
-printAssembly :: AST.Module -> IO ()
-printAssembly = printAssemblyOpt optNone
-
-execOpt :: Optimizer -> [Int32] -> AST.Module -> IO ()
-execOpt opt args llvmAst = runJit $ do
-    context <- ContT withContext
-    m <- parseModule context llvmAst
-    _ <- liftIO $ opt context m
-    engine <-
-        ContT $ EE.withMCJIT context optlevel model framePtrElim fastInstr
-    bin <- ContT $ EE.withModuleInEngine engine m
-    mbMainfn <- liftIO $ EE.getFunction bin (AST.Name "__main")
-    mainfn <- maybe (throwIO $ ProgramError "No main function") pure mbMainfn
-    res <- liftIO $ callFFI mainfn retInt32 (map argInt32 args)
-    liftIO $ putText $ "Result: " <> show res
-  where
-    optlevel = Just 0
-    model = Nothing
-    framePtrElim = Nothing
-    fastInstr = Nothing
-
-exec :: [Int32] -> AST.Module -> IO ()
-exec = execOpt optNone
-
-callOpt :: Optimizer -> [Int32] -> AST.Module -> IO Int32
-callOpt opt args llvmAst = withRef $ \res -> runJit $ do
-    context <- ContT withContext
-    m <- parseModule context llvmAst
-    _ <- liftIO $ opt context m
-    engine <-
-        ContT $ EE.withMCJIT context optlevel model framePtrElim fastInstr
-    bin <- ContT $ EE.withModuleInEngine engine m
-    mbMainfn <- liftIO $ EE.getFunction bin (AST.Name "__main")
-    mainfn <- maybe (throwIO $ ProgramError "No main function") pure mbMainfn
-    liftIO $ writeIORef res =<< callFFI mainfn retInt32 (map argInt32 args)
-  where
-    optlevel = Just 0
-    model = Nothing
-    framePtrElim = Nothing
-    fastInstr = Nothing
-    withRef :: (IORef Int32 -> IO ()) -> IO Int32
-    withRef f = do
-      ref <- newIORef 0
-      f ref
-      readIORef ref
-
-call :: [Int32] -> AST.Module -> IO Int32
-call = callOpt optNone
-
-
-----------------------------------------------------------------------
--- Optimizers
-
-type Optimizer = Context -> Module -> IO Bool
-
-optNone :: Optimizer
-optNone _ _ = pure False
-
-optNoinline :: Optimizer
-optNoinline _context llvmAst = withPassManager passes $ \pm ->
-    runPassManager pm llvmAst
-  where
-    passes = defaultCuratedPassSetSpec
-      { optLevel = Just 3
-      , sizeLevel = Just 1
-      , simplifyLibCalls = Just True
-      , loopVectorize = Just True
-      , superwordLevelParallelismVectorize = Just True
-      }
-
-optInline :: Optimizer
-optInline _context llvmAst = withPassManager passes $ \pm ->
-    runPassManager pm llvmAst
-  where
-    passes = defaultCuratedPassSetSpec
-      { optLevel = Just 3
-      , sizeLevel = Just 1
-      , simplifyLibCalls = Just True
-      , loopVectorize = Just True
-      , superwordLevelParallelismVectorize = Just True
-      , useInlinerWithThreshold = Just 225
-      }
-
-optTarget :: Optimizer
-optTarget _context llvmAst = flip runContT pure $ do
-    triple <- liftIO getProcessTargetTriple
-    machine <- ContT $ withHostTargetMachine
-    libraryInfo <- ContT $ withTargetLibraryInfo triple
-    layout <- liftIO $ getTargetMachineDataLayout machine
-    let passes = defaultCuratedPassSetSpec
-          { optLevel = Just 3
-          , sizeLevel = Just 1
-          , simplifyLibCalls = Just True
-          , loopVectorize = Just True
-          , superwordLevelParallelismVectorize = Just True
-          , useInlinerWithThreshold = Just 225
-          , dataLayout = Just layout
-          , targetLibraryInfo = Just libraryInfo
-          , targetMachine = Just machine
-          }
-    pm <- ContT $ withPassManager passes
-    liftIO $ runPassManager pm llvmAst
+compile :: Module -> Jit ([Int32] -> IO Int32)
+compile m = do
+  let optlevel = Just 0
+      model = Nothing
+      framePtrElim = Nothing
+      fastInstr = Nothing
+  ctx <- ask
+  engine <- using $ managed (withMCJIT ctx optlevel model framePtrElim fastInstr)
+  bin <- using $ managed (withModuleInEngine engine m)
+  mbMainFun <- liftIO $ getFunction bin (AST.Name "__main")
+  mainFun <- maybe (throwIO $ MissingEntryPoint) pure mbMainFun
+  pure $! \ args -> callFFI mainFun retInt32 (map argInt32 args)

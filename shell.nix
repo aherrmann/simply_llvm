@@ -3,15 +3,16 @@ with (import ./nixpkgs);
 let
   ghc =
     haskellPackages.ghcWithHoogle (pkgs: with pkgs; [
-      protolude
-      dlist
-      llvm-hs-pure
-      llvm-hs
-      libffi
       ansi-wl-pprint
-      pretty
+      dlist
       GenericPretty
       hspec
+      libffi
+      llvm-hs
+      llvm-hs-pure
+      managed
+      pretty
+      protolude
     ]);
 in
 pkgs.stdenv.mkDerivation {

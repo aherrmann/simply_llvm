@@ -12,18 +12,19 @@ import qualified Simply.Examples.Simply as Example
 
 
 withProgram :: Simply.Program -> (([Int32] -> IO Int32) -> IO a) -> IO a
-withProgram prog user = do
-  let
-    ir = Simply2IR.transform prog
-    llvm = IR2LLVM.transform ir
-    run args = JIT.call args llvm
-  user run
+withProgram = JIT.withExec . IR2LLVM.transform . Simply2IR.transform
 
 run0 :: Simply.Program -> IO Int32
-run0 prog = withProgram prog $ \ p -> p []
+run0 prog = withProgram prog apply0
+  where apply0 f = f []
 
-runOn1 :: Simply.Program -> [Int32] -> IO [Int32]
-runOn1 prog args = withProgram prog $ \ p -> for args (\n -> p [n])
+run1 :: Simply.Program -> [Int32] -> IO [Int32]
+run1 prog args = withProgram prog $ for args . apply1
+  where apply1 f x = f [x]
+
+
+verifyProgram :: Simply.Program -> IO (Either JIT.VerifyException ())
+verifyProgram = JIT.verifyModule . IR2LLVM.transform . Simply2IR.transform
 
 
 factorial :: Integral a => a -> a
@@ -37,43 +38,64 @@ main :: IO ()
 main = hspec $ do
 
   describe "Example.ex01a_factorial" $ do
+    let prog = Example.ex01a_factorial
     it "type-checks" $ do
-      Simply.checkProgram Example.ex01a_factorial `shouldBe` Right ()
-    it "works" $ do
-      run0 Example.ex01a_factorial `shouldReturn` factorial 5
+      Simply.checkProgram prog `shouldBe` Right ()
+    it "verifies" $ do
+      verifyProgram prog `shouldReturn` Right ()
+    it "compiles and runs" $ do
+      run0 prog `shouldReturn` factorial 5
 
   describe "Example.ex01b_factorial" $ do
+    let prog = Example.ex01b_factorial
     it "type-checks" $ do
-      Simply.checkProgram Example.ex01b_factorial `shouldBe` Right ()
-    it "works" $ do
-      Example.ex01b_factorial `runOn1` [0..7] `shouldReturn` map factorial [0..7]
+      Simply.checkProgram prog `shouldBe` Right ()
+    it "verifies" $ do
+      verifyProgram prog `shouldReturn` Right ()
+    it "compiles and runs" $ do
+      prog `run1` [0..7] `shouldReturn` map factorial [0..7]
 
   describe "Example.ex01c_factorial" $ do
+    let prog = Example.ex01c_factorial
     it "type-checks" $ do
-      Simply.checkProgram Example.ex01c_factorial `shouldBe` Right ()
-    it "works" $ do
-      run0 Example.ex01c_factorial `shouldReturn` factorial 5
+      Simply.checkProgram prog `shouldBe` Right ()
+    it "verifies" $ do
+      verifyProgram prog `shouldReturn` Right ()
+    it "compiles and runs" $ do
+      run0 prog `shouldReturn` factorial 5
 
   describe "Example.ex01d_factorial" $ do
+    let prog = Example.ex01d_factorial
     it "type-checks" $ do
-      Simply.checkProgram Example.ex01d_factorial `shouldBe` Right ()
-    it "works" $ do
-      Example.ex01d_factorial `runOn1` [0..7] `shouldReturn` map factorial [0..7]
+      Simply.checkProgram prog `shouldBe` Right ()
+    it "verifies" $ do
+      verifyProgram prog `shouldReturn` Right ()
+    it "compiles and runs" $ do
+      prog `run1` [0..7] `shouldReturn` map factorial [0..7]
 
   describe "Example.ex02a_higher_order" $ do
+    let prog = Example.ex02a_higher_order
     it "type-checks" $ do
-      Simply.checkProgram Example.ex02a_higher_order `shouldBe` Right ()
-    it "works" $ do
-      run0 Example.ex02a_higher_order `shouldReturn` 7
+      Simply.checkProgram prog `shouldBe` Right ()
+    it "verifies" $ do
+      verifyProgram prog `shouldReturn` Right ()
+    it "compiles and runs" $ do
+      run0 prog `shouldReturn` 7
 
   describe "Example.ex02b_higher_order" $ do
+    let prog = Example.ex02b_higher_order
     it "type-checks" $ do
-      Simply.checkProgram Example.ex02b_higher_order `shouldBe` Right ()
-    it "works" $ do
-      Example.ex02b_higher_order `runOn1` [0..7] `shouldReturn` map (+3) [0..7]
+      Simply.checkProgram prog `shouldBe` Right ()
+    it "verifies" $ do
+      verifyProgram prog `shouldReturn` Right ()
+    it "compiles and runs" $ do
+      prog `run1` [0..7] `shouldReturn` map (+3) [0..7]
 
   describe "Example.ex03_factorial_fix" $ do
+    let prog = Example.ex03_factorial_fix
     it "type-checks" $ do
-      Simply.checkProgram Example.ex03_factorial_fix `shouldBe` Right ()
-    it "works" $ do
-      Example.ex03_factorial_fix `runOn1` [0..7] `shouldReturn` map factorial [0..7]
+      Simply.checkProgram prog `shouldBe` Right ()
+    it "verifies" $ do
+      verifyProgram prog `shouldReturn` Right ()
+    it "compiles and runs" $ do
+      prog `run1` [0..7] `shouldReturn` map factorial [0..7]
