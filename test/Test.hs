@@ -24,6 +24,20 @@ prop_wellTyped_typeChecks = property $ do
   program <- forAll WellTyped.genProgram
   liftEither $ Simply.checkProgram program
 
+prop_wellTyped_compiles :: Property
+prop_wellTyped_compiles = property $ do
+  program <- forAll WellTyped.genProgram
+  let intermediate = Intermediate.fromSurface program
+  annotateShow intermediate
+  annotate $ toS $ JIT.ppllvm $ LLVM.fromIntermediate intermediate
+  result <- liftIO $ verifyProgram program
+    `catch` \ e -> pure $ Left $ show (e :: SomeException)
+  case result of
+    Right () -> success
+    Left err -> do
+      footnote (toS err)
+      failure
+
 
 withProgram :: Simply.Program -> (([Int32] -> IO Int32) -> IO a) -> IO a
 withProgram = JIT.withExec . LLVM.fromIntermediate . Intermediate.fromSurface

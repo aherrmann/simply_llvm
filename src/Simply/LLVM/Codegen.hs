@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Simply.LLVM.Codegen where
 
 import Protolude hiding (Type, local, void, local, one, zero)
@@ -205,7 +207,129 @@ sortBlocks :: [(Name, BlockState)] -> [(Name, BlockState)]
 sortBlocks = sortBy (compare `on` (idx . snd))
 
 createBlocks :: CodegenState -> [BasicBlock]
-createBlocks m = map makeBlock $ sortBlocks $ Map.toList (blocks m)
+createBlocks m = sortUnnames $ map makeBlock $ sortBlocks $ Map.toList (blocks m)
+
+sortUnnames :: [BasicBlock] -> [BasicBlock]
+sortUnnames l = renameUnnames l $ enumerateUnnames l
+
+enumerateUnnames :: [BasicBlock] -> Map.Map Word Word
+enumerateUnnames l = snd $ execState (traverse_ enumBlock l) (0, Map.empty)
+  where
+    enumBlock :: BasicBlock -> State (Word, Map.Map Word Word) ()
+    enumBlock (BasicBlock _ is t) = do
+      traverse_ enum is
+      enum t
+
+    enum :: Named a -> State (Word, Map.Map Word Word) ()
+    enum (Do _) = pure ()
+    enum (Name _ := _) = pure ()
+    enum (UnName n := _) = do
+      -- get current counter
+      n' <- gets fst
+      -- map name to current counter
+      modify $ second $ Map.insert n n'
+      -- increment counter
+      modify $ first $ succ
+
+renameUnnames :: [BasicBlock] -> Map.Map Word Word -> [BasicBlock]
+renameUnnames l m = map renameBlock l
+  where
+    rename :: Word -> Word
+    rename n
+      | Just n' <- Map.lookup n m = n'
+      | otherwise = panic $
+          "[Simply.LLVM.Codegen.renameUnnames.rename] \
+          \Undefined name " <> show n
+
+    renameBlock :: BasicBlock -> BasicBlock
+    renameBlock (BasicBlock n is t) =
+      let
+        is' = map (mapNamed renameInstr . renameNamed) is
+        t' = (mapNamed renameTerm . renameNamed) t
+      in
+      BasicBlock n is' t'
+
+    mapNamed :: (a -> b) -> Named a -> Named b
+    mapNamed f (Do a) = Do (f a)
+    mapNamed f (n := a) = n := f a
+
+    renameName :: Name -> Name
+    renameName (UnName n) = UnName (rename n)
+    renameName n = n
+
+    renameNamed :: Named a -> Named a
+    renameNamed (n := a) = renameName n := a
+    renameNamed a = a
+
+    renameOp :: Operand -> Operand
+    renameOp = \case
+      LocalReference ty n -> LocalReference ty (renameName n)
+      op -> op
+
+    renameInstr :: Instruction -> Instruction
+    renameInstr = \case
+      ins@(Add {..}) -> ins
+        { operand0 = renameOp operand0
+        , operand1 = renameOp operand1
+        }
+      ins@(Sub {..}) -> ins
+        { operand0 = renameOp operand0
+        , operand1 = renameOp operand1
+        }
+      ins@(Mul {..}) -> ins
+        { operand0 = renameOp operand0
+        , operand1 = renameOp operand1
+        }
+      ins@(Alloca {..}) -> ins
+        { numElements = renameOp <$> numElements }
+      ins@(Load {..}) -> ins
+        { address = renameOp address
+        }
+      ins@(Store {..}) -> ins
+        { address = renameOp address
+        , value = renameOp value
+        }
+      ins@(GetElementPtr {..}) -> ins
+        { address = renameOp address
+        , indices = renameOp <$> indices
+        }
+      ins@(PtrToInt {..}) -> ins
+        { operand0 = renameOp operand0 }
+      ins@(IntToPtr {..}) -> ins
+        { operand0 = renameOp operand0 }
+      ins@(BitCast {..}) -> ins
+        { operand0 = renameOp operand0 }
+      ins@(ICmp {..}) -> ins
+        { operand0 = renameOp operand0
+        , operand1 = renameOp operand1
+        }
+      ins@(Phi {..}) -> ins
+        { incomingValues = [ (renameOp op, renameName n) | (op, n) <- incomingValues ] }
+      ins@(Call {..}) -> ins
+        { function = renameOp <$> function
+        , arguments = [ (renameOp op, attrs) | (op, attrs) <- arguments ]
+        }
+      ins@(ExtractValue {..}) -> ins
+        { aggregate = renameOp aggregate }
+      ins@(InsertValue {..}) -> ins
+        { aggregate = renameOp aggregate
+        , element = renameOp element
+        }
+      ins -> panic $
+        "[Simply.LLVM.Codegen.renameUnnames.renameInstr] \
+        \Unexpected instruction " <> show ins
+
+    renameTerm :: Terminator -> Terminator
+    renameTerm = \case
+      Ret mbOp meta ->
+        Ret (renameOp <$> mbOp) meta
+      CondBr cond then_ else_ meta ->
+        CondBr (renameOp cond) (renameName then_) (renameName else_) meta
+      Br dst meta ->
+        Br (renameName dst) meta
+      t -> panic $
+        "[Simply.LLVM.Codegen.renameUnnames.renameTerm] \
+        \Unexpected terminator " <> show t
 
 makeBlock :: (Name, BlockState) -> BasicBlock
 makeBlock (l, BlockState _ s t) = BasicBlock l s (maketerm t)
@@ -313,6 +437,13 @@ getvar var = do
   case List.lookup var syms of
     Just x  -> return x
     Nothing -> panic $ "Local variable not in scope: " <> show var
+
+scope :: Codegen a -> Codegen a
+scope m = do
+  lcls <- gets symtab
+  r <- m
+  modify $ \s -> s { symtab = lcls }
+  pure r
 
 -------------------------------------------------------------------------------
 
@@ -450,7 +581,7 @@ cbr :: Operand -> Name -> Name -> Codegen (Named Terminator)
 cbr cond tr fl = terminator $ Do $ CondBr cond tr fl []
 
 phi :: Type -> [(Operand, Name)] -> Codegen Operand
-phi ty incoming = instr int $ Phi ty incoming []
+phi ty incoming = instr ty $ Phi ty incoming []
 
 ret :: Operand -> Codegen (Named Terminator)
 ret val = terminator $ Do $ Ret (Just val) []

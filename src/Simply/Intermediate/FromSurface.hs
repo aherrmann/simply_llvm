@@ -6,9 +6,7 @@ module Simply.Intermediate.FromSurface
 
 import Protolude hiding (Type)
 
-import Control.Arrow ((&&&))
 import Control.Monad (zipWithM)
-import Control.Monad.Trans.Maybe
 import Control.Monad.RWS hiding ((<>))
 import Data.DList (DList)
 import qualified Data.DList as DList
@@ -23,15 +21,14 @@ import qualified Simply.Surface.AST as Surface
 ----------------------------------------------------------------------
 -- Types
 
--- | the context maps names to types
-type Context = Map Name Intermediate.Type
-
-
--- | scope in which a name is defined
-data Scope
-  = GlobalScope
-  | LocalScope
+-- | A variable differentiating on its scope of origin
+data ScopedVar
+  = LocalVar  Intermediate.Type
+  | GlobalVar Intermediate.Type
   deriving (Show, Eq, Ord)
+
+-- | the context maps names to types
+type Context = Map Name ScopedVar
 
 
 -- | A transform reads the global and local context,
@@ -39,7 +36,7 @@ data Scope
 -- and keeps a counter (state) for fresh variable names.
 --
 -- Transform a = Context -> Context -> Count -> (Count, Global, a)
-type Transform = RWS (Context, Context) (DList Intermediate.Global) Int
+type Transform = RWS Context (DList Intermediate.Global) Int
 
 
 ----------------------------------------------------------------------
@@ -51,31 +48,27 @@ type Transform = RWS (Context, Context) (DList Intermediate.Global) Int
 --
 -- It is illegal to pass a program that is not type-correct.
 fromSurface :: Surface.Program -> Intermediate.Program
-fromSurface prog = Intermediate.Program (DList.apply extra glbls)
+fromSurface program = Intermediate.Program (DList.apply extra globals)
   where
-    (Intermediate.Program glbls, extra) =
-      evalRWS (transfProgram prog) (Map.empty, Map.empty) 0
+    (Intermediate.Program globals, extra) =
+      evalRWS (transfProgram program) Map.empty 0
 
 
 ----------------------------------------------------------------------
 -- Context Handling
 
-addGlobalCtx :: [(Name, Intermediate.Type)] -> Transform a -> Transform a
-addGlobalCtx ctx = local . first $ Map.union (Map.fromList ctx)
+with :: [Intermediate.Arg] -> Transform a -> Transform a
+with vars = local . Map.union . Map.fromList $
+  [ (name, LocalVar type_) | (name, type_) <- vars ]
 
-addLocalCtx :: [(Name, Intermediate.Type)] -> Transform a -> Transform a
-addLocalCtx ctx = local . second $ Map.union (Map.fromList ctx)
-
-lookupGlobalCtx :: Name -> Transform (Maybe Intermediate.Type)
-lookupGlobalCtx name = asks $ Map.lookup name . fst
-
-lookupLocalCtx :: Name -> Transform (Maybe Intermediate.Type)
-lookupLocalCtx name = asks $ Map.lookup name . snd
-
-lookupCtx :: Name -> Transform (Maybe (Intermediate.Type, Scope))
-lookupCtx name = runMaybeT
-   $  (, LocalScope) <$> MaybeT (lookupLocalCtx name)
-  <|> (, GlobalScope) <$> MaybeT (lookupGlobalCtx name)
+lookup :: Name -> Transform ScopedVar
+lookup name = do
+  mbVar <- asks $ Map.lookup name
+  case mbVar of
+    Just var -> pure var
+    Nothing  -> panic $
+      "[Simply.Intermediate.FromSurface.lookup] \
+      \Undefined variable: " <> show name
 
 
 ----------------------------------------------------------------------
@@ -90,7 +83,13 @@ freshname pref = do
 
 
 -- | add a global closure definition
-defclosure :: Name -> [Intermediate.Arg] -> [Intermediate.Arg] -> Intermediate.Type -> Intermediate.Expr -> Transform ()
+defclosure
+  :: Name
+  -> [Intermediate.Arg]
+  -> [Intermediate.Arg]
+  -> Intermediate.Type
+  -> Intermediate.Expr
+  -> Transform ()
 defclosure name env args retty body =
   tell $ DList.singleton (Intermediate.DefClosure name env args retty body)
 
@@ -98,14 +97,19 @@ defclosure name env args retty body =
 -- | Lift an expression that expects the given arguments
 -- and produces the given result type to a closure.
 -- Capture all free local variables in the expression.
-liftClosure :: [Intermediate.Arg] -> Intermediate.Type -> Intermediate.Expr -> Transform Intermediate.Expr
-liftClosure args retty body = do
+liftClosure
+  :: [Intermediate.Arg]
+  -> Intermediate.Type
+  -> Intermediate.Expr
+  -> Transform Intermediate.Expr
+liftClosure arglist retty body = do
+  body' <- convert retty body
   name <- freshname "__closure_"
   let
-    env = Map.toList $ Intermediate.freeVars body Map.\\ Map.fromList args
-    capture = map (uncurry $ flip Intermediate.LVar) env
-  defclosure name env args retty body
-  pure $! Intermediate.MakeClosure (Intermediate.TClosure (map snd args) retty) name capture
+    env = Map.toList $ Intermediate.freeVars body' Map.\\ Map.fromList arglist
+    capture = map (uncurry $ flip Intermediate.Var) env
+  defclosure name env arglist retty body'
+  pure $! Intermediate.Closure (Intermediate.TClosure (map snd arglist) retty) name capture
 
 
 ----------------------------------------------------------------------
@@ -126,15 +130,36 @@ transfType = \case
 -- E.g. a function without arguments can be converted to its result type.
 --
 -- The function is partial and fails if there is no common type. (Sorry)
-promoteType :: Intermediate.Type -> Intermediate.Type -> Intermediate.Type
-promoteType a b =
-  case (a, b) of
-    (Intermediate.TFunction [] r, _) | b == r -> r
-    (Intermediate.TClosure [] r, _) | b == r -> r
-    (_, Intermediate.TFunction [] r) | a == r -> r
-    (_, Intermediate.TClosure [] r) | a == r -> r
-    _ | a == b -> a
-      | otherwise -> panic "Invalid type promotion"
+commonType :: Intermediate.Type -> Intermediate.Type -> Intermediate.Type
+
+commonType (Intermediate.TFunction [] a) b | a == b = a
+commonType (Intermediate.TClosure  [] a) b | a == b = a
+commonType a (Intermediate.TFunction [] b) | a == b = a
+commonType a (Intermediate.TClosure  [] b) | a == b = a
+
+commonType (Intermediate.TFunction [] a) (Intermediate.TFunction [] b) | a == b = a
+commonType (Intermediate.TFunction [] a) (Intermediate.TClosure  [] b) | a == b = a
+commonType (Intermediate.TClosure  [] a) (Intermediate.TFunction [] b) | a == b = a
+commonType (Intermediate.TClosure  [] a) (Intermediate.TClosure  [] b) | a == b = a
+
+commonType (Intermediate.TFunction args1 ret1) (Intermediate.TClosure args2 ret2)
+  | args1 == args2 && ret1 == ret2
+  = Intermediate.TClosure args1 ret1
+commonType (Intermediate.TClosure args1 ret1) (Intermediate.TFunction args2 ret2)
+  | args1 == args2 && ret1 == ret2
+  = Intermediate.TClosure args1 ret1
+
+commonType a b | a == b = a
+
+commonType a b
+  | (args1, ret1) <- Intermediate.unfoldFunctionType a
+  , (args2, ret2) <- Intermediate.unfoldFunctionType b
+  , args1 == args2 && ret1 == ret2
+  = Intermediate.TClosure args1 ret1
+
+commonType a b = panic $
+  "[Simply.Intermediate.FromSurface.commonType] \
+  \No common type between " <> show a <> " and " <> show b
 
 
 -- | Convert (if necessary) two expressions to their common type.
@@ -144,27 +169,50 @@ promoteType a b =
 -- The function is partial and fails if there is no common type.
 promote :: Intermediate.Expr -> Intermediate.Expr -> Transform (Intermediate.Expr, Intermediate.Expr)
 promote a b = (,) <$> convert ty a <*> convert ty b
-  where ty = promoteType (Intermediate.exprType a) (Intermediate.exprType b)
+  where ty = Intermediate.exprType a `commonType` Intermediate.exprType b
 
 
 -- | Convert an expression to the given type.
 --
 -- The function is partial and fails if the conversion is illegal.
 convert :: Intermediate.Type -> Intermediate.Expr -> Transform Intermediate.Expr
-convert ty expr =
-  let ety = Intermediate.exprType expr in
-  case ety of
-    -- Functions or closures without arguments
-    -- can be implicitly converted to their return types
-    -- by calling them.
-    Intermediate.TFunction [] retty | retty == ty -> call expr []
-    Intermediate.TClosure [] retty | retty == ty -> call expr []
-    -- A function pointer can be converted to a closure
-    -- as a partial application with zero arguments.
-    Intermediate.TFunction argtys retty | Intermediate.TClosure argtys retty == ty ->
-      partialCall expr []
-    ty' | ty' == ty -> pure $! expr
-    _ -> panic "Invalid convert"
+convert as expr =
+  let ty = Intermediate.exprType expr in
+  case as of
+
+    _ | as == ty -> pure expr
+
+      | not (Intermediate.isFunctionType as)
+      , Intermediate.isFunctionType ty
+      , as == Intermediate.returnType ty
+      , null (Intermediate.argTypes ty)
+      -> call expr []
+
+    Intermediate.TClosure args1 ret1
+      | Intermediate.isFunctionType ty
+      , args2 <- Intermediate.argTypes ty
+      , ret2 <- Intermediate.returnType ty
+      , args1 == args2 && ret1 == ret2
+      -> partialCall expr []
+
+    Intermediate.TClosure [] ret
+      | ret == ty
+      -> liftClosure [] ret expr
+
+    Intermediate.TClosure args1 ret1
+      | Intermediate.isFunctionType ty
+      , (args2, ret2) <- Intermediate.unfoldFunctionType ty
+      , args1 == args2 && ret1 == ret2
+      -> do
+        argnames <- traverse (const $ freshname "__arg_") args1
+        let arglist = zip argnames args1
+            passed = zipWith Intermediate.Var args1 argnames
+        body <- call expr passed
+        liftClosure arglist ret1 body
+
+    _ -> panic $
+      "[Simply.Intermediate.FromSurface.convert] \
+      \can't convert from " <> show ty <> " to " <> show as
 
 
 -- | transform a Surface AST expression to an Intermediate AST expression
@@ -177,16 +225,15 @@ transfExpr = \case
   Surface.Lit l@(LBool _) -> pure $! Intermediate.Lit Intermediate.TBool l
 
   Surface.Var name -> do
-    mbCtx <- lookupCtx name
-    case mbCtx of
-      Just (ty, LocalScope) -> pure $! Intermediate.LVar ty name
-      Just (ty, GlobalScope) -> pure $! Intermediate.GVar ty name
-      _ -> panic "Unknown variable"
+    var <- lookup name
+    case var of
+      LocalVar  type_ -> pure $ Intermediate.Var type_ name
+      GlobalVar type_ -> pure $ Intermediate.Global type_ name
 
   Surface.Let name e ein -> do
     e' <- transfExpr e
     let ty = Intermediate.exprType e'
-    ein' <- addLocalCtx [(name, ty)] $ transfExpr ein
+    ein' <- with [(name, ty)] $ transfExpr ein
     let inty = Intermediate.exprType ein'
     pure $! Intermediate.Let inty name e' ein'
 
@@ -207,21 +254,18 @@ transfExpr = \case
     pure $! Intermediate.BinaryOp ty op a' b'
 
   app@(Surface.App _ _) ->
-    case Surface.unfoldApp app of
-      (f@(Surface.Var _name), args) ->
-        join $ call <$> transfExpr f <*> traverse transfExpr args
-      (lam@(Surface.Lam _ _), args) -> do
-        f' <- transfExpr lam
-        args' <- traverse transfExpr args
-        call f' args'
-      (f, args) ->
-        join $ call <$> transfExpr f <*> traverse transfExpr args
+    let (f, args) = Surface.unfoldApp app in
+    join $ call <$> transfExpr f <*> traverse transfExpr args
 
-  Surface.Lam args body -> do
-    let args' = map (second transfType) args
-    body' <- addLocalCtx args' $ transfExpr body
-    let retty = Intermediate.exprType body'
-    liftClosure args' retty body'
+  Surface.Lam arglist body -> do
+    let arglist' = [ (n, transfType t) | (n, t) <- arglist ]
+    body' <- with arglist' $ transfExpr body
+    let ret' =
+          case Intermediate.exprType body' of
+            Intermediate.TFunction [] ret -> ret
+            Intermediate.TFunction args ret -> Intermediate.TClosure args ret
+            x -> x
+    liftClosure arglist' ret' body'
 
 
 -- | Construct a call
@@ -232,79 +276,52 @@ transfExpr = \case
 --
 -- The function is partial and fails if its pre-condition is violated.
 call :: Intermediate.Expr -> [Intermediate.Expr] -> Transform Intermediate.Expr
-call f args = do
-  let
-    fty = Intermediate.exprType f
-    argtys = Intermediate.argTypes fty
-    retty = Intermediate.returnType fty
-    numargs = Intermediate.numArgs fty
-    numpassed = length args
-  args' <- zipWithM convert argtys args
-  case compare numargs numpassed of
-    EQ ->
-      -- saturated call
-      case f of
-        Intermediate.GVar (Intermediate.TFunction _ _) name ->
-          pure $! Intermediate.CallFunction retty name args'
-        Intermediate.LVar (Intermediate.TFunction _ _) _name ->
-          panic "Can only call global functions!"
-        _ ->
-          pure $! Intermediate.CallClosure retty f args'
-    LT -> do
-      -- over saturated call - the call will itself return a function
-      f' <- call f (take numargs args)
-      call f' (drop numargs args)
-    GT ->
-      -- under saturated call - create a closure which will complete the call
-      partialCall f args
+call f args =
+  case compare numargs numexpected of
+    EQ -> saturatedCall f args
+    LT -> partialCall f args
+    GT -> do
+      let (args1, args2) = splitAt numexpected args
+      f' <- saturatedCall f args1
+      call f' args2
+  where
+    numargs = length args
+    numexpected = length . Intermediate.argTypes . Intermediate.exprType $ f
 
+saturatedCall :: Intermediate.Expr -> [Intermediate.Expr] -> Transform Intermediate.Expr
+saturatedCall f args = Intermediate.Call retty f <$> zipWithM convert argtys args
+  where
+    retty = Intermediate.returnType . Intermediate.exprType $ f
+    argtys = Intermediate.argTypes . Intermediate.exprType $ f
 
--- | handle a partial function application
--- by creating a closure that expects the remaining arguments
 partialCall :: Intermediate.Expr -> [Intermediate.Expr] -> Transform Intermediate.Expr
-partialCall fun args = do
-
-  let
-    funty = Intermediate.exprType fun
-    argtys = Intermediate.argTypes funty
-    retty = Intermediate.returnType funty
-    passed = length args
-    missing = length argtys - passed
-
-  args' <- zipWithM convert argtys args
-  argnames <- replicateM missing (freshname "__arg_")
-
-  let
-    clargs = zip argnames $ drop passed argtys
-    clexprs = map (uncurry $ flip Intermediate.LVar) clargs
-
-  join $! liftClosure clargs retty <$> call fun (args' ++ clexprs)
+partialCall f given = do
+  let missing = drop (length given) . Intermediate.argTypes . Intermediate.exprType $ f
+  arglist <- forM missing $ \ t -> do
+    n <- freshname "__arg_"
+    pure (n, t)
+  let extra = [ Intermediate.Var t n | (n, t) <- arglist ]
+  body <- saturatedCall f (given ++ extra)
+  let retty = Intermediate.returnType . Intermediate.exprType $ f
+  liftClosure arglist retty body
 
 
--- | transform a functions body in Surface AST to Intermediate AST
--- that expects the given arguments in context and should produce the given
--- return type.
-transfBody :: [Intermediate.Arg] -> Intermediate.Type -> Surface.Expr -> Transform Intermediate.Expr
-transfBody args' retty' body =
-  addLocalCtx args' $ convert retty' =<< transfExpr body
-
-
--- | transform a global binding in Surface AST to Intermediate AST
+-- | transform a global binding in "Simply" to IR
 transfGlobal :: Surface.Global -> Transform Intermediate.Global
-transfGlobal (Surface.Def name args retty body) =
-  Intermediate.DefFunction name args' retty' <$> transfBody args' retty' body
-  where
-    args' = map (second transfType) args
-    retty' = transfType retty
+transfGlobal (Surface.Def name arglist retty body) = do
+  let
+    arglist' = map (second (transfType)) arglist
+    retty' = transfType $ retty
+  body' <- with arglist' $ convert retty' =<< transfExpr body
+  pure $! Intermediate.DefFunction name arglist' retty' body'
 
 
--- | transform a program in Surface AST to Intermediate AST
 transfProgram :: Surface.Program -> Transform Intermediate.Program
-transfProgram (Surface.Program glbls) =
-  addGlobalCtx ctx $ do
-    glbls' <- traverse transfGlobal glbls
-    pure $! Intermediate.Program glbls'
+transfProgram (Surface.Program globals) = withGlobalContext $
+  Intermediate.Program <$> traverse transfGlobal globals
   where
-    ctx = map (Surface.globalName &&& transfGlobalType) glbls
-    transfGlobalType (Surface.Def _ args' retty _) =
-      Intermediate.TFunction (map (transfType . snd) args') (transfType retty)
+    withGlobalContext = local . const $ Map.fromList
+      [ (name, GlobalVar ty)
+      | Surface.Def name arglist retty _body <- globals
+      , let ty = Intermediate.TFunction [ transfType t | (_, t) <- arglist ] (transfType retty)
+      ]

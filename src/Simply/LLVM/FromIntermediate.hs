@@ -4,14 +4,20 @@ module Simply.LLVM.FromIntermediate
 
 import Protolude hiding (Type, local, void, zero)
 
+import Control.Exception (assert)
 import Data.List (zip3)
 
 import LLVM.AST.Type
 import qualified LLVM.AST as LLVM
+import qualified LLVM.AST.Constant as LLVM
 import qualified LLVM.AST.IntegerPredicate as IP
 
 import Simply.Intermediate.AST as Intermediate
 import Simply.LLVM.Codegen
+
+
+assertM :: Applicative m => Bool -> m ()
+assertM = flip assert $ pure ()
 
 
 ----------------------------------------------------------------------
@@ -38,6 +44,22 @@ llvmType (TFunction args retty) = fn (llvmType retty) (map llvmType args)
 llvmType (TClosure args retty) = closure (llvmType retty) (map llvmType args)
 
 
+toFunPtrType :: LLVM.Type -> LLVM.Type
+toFunPtrType ty@(FunctionType _ _ _) = ptr ty
+toFunPtrType ty = ty
+
+
+llvmValueType :: Intermediate.Type -> LLVM.Type
+llvmValueType = toFunPtrType . llvmType
+
+
+toFunPtr :: LLVM.Operand -> LLVM.Operand
+toFunPtr (LLVM.LocalReference ty n) = LLVM.LocalReference (toFunPtrType ty) n
+toFunPtr (LLVM.ConstantOperand (LLVM.GlobalReference ty n)) =
+  LLVM.ConstantOperand (LLVM.GlobalReference (toFunPtrType ty) n)
+toFunPtr op = op
+
+
 -- | Transform an IR expression to LLVM.
 codegenExpr :: Expr -> Codegen LLVM.Operand
 codegenExpr expr = case expr of
@@ -48,46 +70,46 @@ codegenExpr expr = case expr of
   Lit TBool (LBool x) ->
     pure $! bool false true x
 
-  LVar _ty x ->
+  Var _ty x ->
     getvar (toS x)
 
-  GVar ty x ->
+  Global ty x ->
     pure $! cons $ global (llvmType ty) (LLVM.Name $ toS x)
 
-  Let _ty name ebound ein -> do
+  Let _ name ebound ein -> do
     ebound' <- codegenExpr ebound
-    assign (toS name) ebound'
-    codegenExpr ein
+    scope $ do
+      assign (toS name) ebound'
+      codegenExpr ein
 
-  If _ty cond tr fl  -> do
+  If ty cond then_ else_  -> do
     ifthen <- addBlock "if.then"
     ifelse <- addBlock "if.else"
     ifexit <- addBlock "if.exit"
 
     -- %entry
     ------------------
-    condition <- codegenExpr cond
-    test <- icmp IP.EQ true condition
-    _ <- cbr test ifthen ifelse
+    cond' <- codegenExpr cond
+    _ <- cbr cond' ifthen ifelse
 
     -- if.then
     ------------------
     _ <- setBlock ifthen
-    trval <- codegenExpr tr
+    then' <- codegenExpr then_
     _ <- br ifexit
     ifthen' <- getBlock
 
     -- if.else
     ------------------
     _ <- setBlock ifelse
-    flval <- codegenExpr fl
+    else' <- codegenExpr else_
     _ <- br ifexit
     ifelse' <- getBlock
 
     -- if.exit
     ------------------
     _ <- setBlock ifexit
-    phi int [(trval, ifthen'), (flval, ifelse')]
+    phi (llvmValueType ty) [(then', ifthen'), (else', ifelse')]
 
   BinaryOp TInt Add a b ->
     join $! add <$> codegenExpr a <*> codegenExpr b
@@ -101,22 +123,36 @@ codegenExpr expr = case expr of
   BinaryOp TBool Eql a b ->
     join $! icmp IP.EQ <$> codegenExpr a <*> codegenExpr b
 
-  CallFunction retTy name args -> do
-    let funTy = llvmType (TFunction (map exprType args) retTy)
-    args' <- traverse codegenExpr args
-    call (llvmType retTy) (externf funTy (LLVM.Name (toS name))) args'
+  Call ty f args -> do
 
-  MakeClosure (TClosure argtys retty) name env -> do
+    let fty = exprType f
+    assertM $ argTypes   fty == map exprType args
+    assertM $ returnType fty == ty
+
+    let ty' = llvmType ty
+    f' <- codegenExpr f
+    args' <- traverse codegenExpr args
+
+    case fty of
+      TFunction     _ _ -> call ty' f' args'
+      TClosure argtys _ -> do
+        let fty' = fn ty' (anyPtr : map llvmType argtys)
+        fptr <- extractValue (ptr fty') f' [0]
+        envptr <- extractValue anyPtr f' [1]
+        call ty' fptr (envptr : args')
+      _ -> panic $ "Attempt to call non-callable: " <> show fty
+
+  Closure (TClosure argtys retty) name env -> do
     envptr' <-
       if null env then
         pure $! nullP anyPtr
       else do
-        let envtys' = map (llvmType . exprType) env
+        let envtys' = map (llvmValueType . exprType) env
         env' <- traverse codegenExpr env
         (anyptr, envptr) <- malloc (closureEnv envtys')
         forM_ (zip3 [0..] envtys' env') $ \(i, ty, v) -> do
           p <- getElementPtr (ptr ty) envptr [cint32 0, cint32 i]
-          store p v
+          store p (toFunPtr v)
         pure $! anyptr
     let
       retty' = llvmType retty
@@ -125,20 +161,6 @@ codegenExpr expr = case expr of
       funty = fn retty' (anyPtr : argtys')
       name' = LLVM.Name $ toS name
     buildStruct closurety [cons $ global (ptr funty) name', envptr']
-
-  CallClosure retty cl args -> do
-    let TClosure clargtys clretty = exprType cl
-    unless (clargtys == map exprType args) $
-      panic "Argument type mismatch in call closure"
-    unless (retty == clretty) $
-      panic "Return type mismatch in call closure"
-
-    let funty = fn (llvmType retty) (anyPtr : map (llvmType . exprType) args)
-    cl' <- codegenExpr cl
-    args' <- traverse codegenExpr args
-    funPtr <- extractValue funty cl' [0]
-    envPtr <- extractValue anyPtr cl' [1]
-    call (llvmType retty) funPtr (envPtr : args')
 
   _ -> panic $! "Invalid expression: " <> show expr
 
@@ -156,7 +178,7 @@ codegenGlobal (DefFunction name args retty body) = do
     codegenBody args' body
 codegenGlobal (DefClosure name env args retty body) = do
   let
-    env' = map (swap . first (LLVM.Name . toS) . second llvmType) env
+    env' = map (swap . first (LLVM.Name . toS) . second llvmValueType) env
     args' = map (swap . first (LLVM.Name . toS) . second llvmType) args
     retty' = llvmType retty
     envname = "__env"

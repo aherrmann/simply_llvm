@@ -20,6 +20,8 @@ module Simply.Intermediate.AST
   , numArgs
   , argTypes
   , returnType
+  , isFunctionType
+  , unfoldFunctionType
   ) where
 
 import Protolude hiding (Type)
@@ -45,7 +47,6 @@ data Type
     -- ^ boolean type
   | TFunction [Type] Type
     -- ^ type of a global function
-
   | TClosure [Type] Type
     -- ^ type of a closure
   deriving (Show, Eq, Ord, Generic)
@@ -66,9 +67,9 @@ type Arg = (Name, Type)
 data Expr
   = Lit Type Lit
     -- ^ literals
-  | LVar Type Name
+  | Var Type Name
     -- ^ local variables
-  | GVar Type Name
+  | Global Type Name
     -- ^ global variables
   | Let Type Name Expr Expr
     -- ^ let-bindings
@@ -76,13 +77,10 @@ data Expr
     -- ^ conditional branches
   | BinaryOp Type BinaryOp Expr Expr
     -- ^ primitive operations (fully applied)
-  | CallFunction Type Name [Expr]
-    -- ^ function calls (fully applied)
-
-  | MakeClosure Type Name [Expr]
-    -- ^ build a closure, name and capture
-  | CallClosure Type Expr [Expr]
-    -- ^ call a closure (fully applied)
+  | Call Type Expr [Expr]
+    -- ^ fully applied call to function or closure
+  | Closure Type Name [Expr]
+    -- ^ build a closure
   deriving (Show, Eq, Ord, Generic)
 
 
@@ -90,7 +88,6 @@ data Expr
 data Global
   = DefFunction Name [Arg] Type Expr
     -- ^ global function definition
-
   | DefClosure Name [Arg] [Arg] Type Expr
     -- ^ global closure-function definition,
     -- expects a capture and arguments
@@ -121,14 +118,13 @@ instance Out Program
 exprType :: Expr -> Type
 exprType = \case
   Lit ty _ -> ty
-  LVar ty _ -> ty
-  GVar ty _ -> ty
+  Var ty _ -> ty
+  Global ty _ -> ty
   Let ty _ _ _ -> ty
   If ty _ _ _ -> ty
   BinaryOp ty _ _ _ -> ty
-  CallFunction ty _ _ -> ty
-  MakeClosure ty _ _ -> ty
-  CallClosure ty _ _ -> ty
+  Call ty _ _ -> ty
+  Closure ty _ _ -> ty
 
 
 -- | all unbound variables in an expression
@@ -136,16 +132,15 @@ exprType = \case
 freeVars :: Expr -> Map Name Type
 freeVars = \case
   Lit _ _ -> Map.empty
-  LVar ty name -> Map.singleton name ty
-  GVar _ _ -> Map.empty
+  Var ty name -> Map.singleton name ty
+  Global _ _ -> Map.empty
   Let _ name ebound ein ->
     freeVars ebound `Map.union` Map.delete name (freeVars ein)
   If _ cond th el ->
     freeVars cond `Map.union` freeVars th `Map.union` freeVars el
   BinaryOp _ _ a b -> freeVars a `Map.union` freeVars b
-  CallFunction _ _ args -> Map.unions (map freeVars args)
-  MakeClosure _ _ env -> Map.unions (map freeVars env)
-  CallClosure _ fun args -> Map.unions (freeVars fun : map freeVars args)
+  Call _ fun args -> Map.unions (map freeVars (fun:args))
+  Closure _ _ env -> Map.unions (map freeVars env)
 
 
 ----------------------------------------------------------------------
@@ -153,13 +148,10 @@ freeVars = \case
 
 -- | number of expected arguments due to a function's type
 numArgs :: Type -> Int
-numArgs = \case
-  TInt -> 0
-  TBool -> 0
-  TFunction args _ -> length args
-  TClosure args _ -> length args
+numArgs = length . argTypes
 
 -- | argument types due to a function's type
+--   values count as functions w/o arguments
 argTypes :: Type -> [Type]
 argTypes = \case
   TInt -> []
@@ -168,8 +160,29 @@ argTypes = \case
   TClosure args _ -> args
 
 -- | a function's return type due to its type
+--   values count as functions w/o arguments
 returnType :: Type -> Type
 returnType = \case
+  TInt -> TInt
+  TBool -> TBool
   TFunction _ retty -> retty
   TClosure _ retty -> retty
-  _ -> panic "Not a function type"
+
+-- | distinguish functions and values
+isFunctionType :: Type -> Bool
+isFunctionType = \case
+  TInt -> False
+  TBool -> False
+  TFunction _ _ -> True
+  TClosure _ _ -> True
+
+unfoldFunctionType :: Type -> ([Type], Type)
+unfoldFunctionType = \case
+  TInt -> ([], TInt)
+  TBool -> ([], TBool)
+  TFunction args ret ->
+    let (args', ret') = unfoldFunctionType ret in
+    (args ++ args', ret')
+  TClosure args ret ->
+    let (args', ret') = unfoldFunctionType ret in
+    (args ++ args', ret')

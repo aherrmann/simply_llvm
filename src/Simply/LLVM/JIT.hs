@@ -21,6 +21,7 @@ module Simply.LLVM.JIT
   , verifyModule
 
   , writeModuleFile
+  , ppllvm
   ) where
 
 import Protolude
