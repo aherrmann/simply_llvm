@@ -5,6 +5,7 @@ module Simply.Surface.Parse
   , parseFile'
 
   , keywords
+  , isKeyword
   ) where
 
 import Protolude hiding (Type, try)
@@ -87,14 +88,15 @@ pExpr :: Parser Expr
 pExpr = label "expression" $
   makeExprParser term table
   where
-    term = choice
-      [ parens pExpr
-      , pVar
-      , pLit
-      , pLet
-      , pLam
-      , pIf
-      ]
+    term = label "term" $
+      choice
+        [ parens pExpr
+        , pVar
+        , pLit
+        , pLet
+        , pLam
+        , pIf
+        ]
     table =
       [ [ InfixL (pure App)
         ]
@@ -161,7 +163,6 @@ pName = label "identifier" $
       firstChar <- lowerChar
       laterChars <- many $ alphaNumChar <|> oneOf [ '\'', '_' ]
       pure $! Text.pack (firstChar : laterChars)
-    isKeyword = (`Set.member` keywords)
 
 keywords :: Set Text
 keywords = Set.fromList
@@ -170,6 +171,9 @@ keywords = Set.fromList
   , "if", "then", "else"
   , "True", "False"
   ]
+
+isKeyword :: Name -> Bool
+isKeyword = (`Set.member` keywords)
 
 pSymbol :: String -> Parser String
 pSymbol = Lexer.symbol pSpace

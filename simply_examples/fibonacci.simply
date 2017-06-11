@@ -1,0 +1,11 @@
+def main (n : Int) : Int
+= fibonacci n
+
+def fibonacci : Int -> Int
+= fibonacci' 0 1
+
+def fibonacci' (a : Int) (b : Int) (n : Int) : Int
+= if n == 0 then
+    a
+  else
+    fibonacci' b (a + b) (n - 1)

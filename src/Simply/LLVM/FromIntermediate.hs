@@ -1,5 +1,6 @@
 module Simply.LLVM.FromIntermediate
   ( fromIntermediate
+  , mangle
   ) where
 
 import Protolude hiding (Type, local, void, zero)
@@ -9,6 +10,7 @@ import Data.List (zip3)
 
 import LLVM.AST.Type
 import qualified LLVM.AST as LLVM
+import qualified LLVM.AST.Constant as LLVM
 import qualified LLVM.AST.IntegerPredicate as IP
 
 import Simply.Intermediate.AST as Intermediate
@@ -43,6 +45,11 @@ llvmType (TFunction args retty) = ptr $ fn (llvmType retty) (map llvmType args)
 llvmType (TClosure args retty) = closure (llvmType retty) (map llvmType args)
 
 
+-- | Mangle names to avoid collisions with library functions.
+mangle :: (IsString a, Semigroup a) => a -> a
+mangle = ("simply_" <>)
+
+
 -- | Transform an IR expression to LLVM.
 codegenExpr :: Expr -> Codegen LLVM.Operand
 codegenExpr expr = case expr of
@@ -57,7 +64,7 @@ codegenExpr expr = case expr of
     getvar (toS x)
 
   Global ty x ->
-    pure $! cons $ global (llvmType ty) (LLVM.Name $ toS x)
+    pure $! cons $ global (llvmType ty) (LLVM.Name . toS $ mangle x)
 
   Let _ name ebound ein -> do
     ebound' <- codegenExpr ebound
@@ -156,8 +163,7 @@ codegenGlobal (DefFunction name args retty body) = do
   let
     args' = map (swap . first (LLVM.Name . toS) . second llvmType) args
     retty' = llvmType retty
-    def = if name == "main" then define else internal
-  def retty' (toS name) args' $
+  internal retty' (toS $ mangle name) args' $
     codegenBody args' body
 codegenGlobal (DefClosure name env args retty body) = do
   let
@@ -194,10 +200,24 @@ codegenBody args' body = do
 
 -- | transform a program to LLVM
 codegenProg :: Program -> LLVM ()
-codegenProg (Program glbls) = do
+codegenProg program = do
 
   -- external symbols
   external (ptr i8) "malloc" [(i32, "size")]
 
+  -- number of arguments to main
+  let argc = Intermediate.programMainNumArgs program
+  constant int "__main_argc" (LLVM.Int 32 (fromIntegral argc))
+
+  -- entry point
+  entryPoint (fromIntegral argc)
+
+  -- main function
+  let
+    mainArgNames = Intermediate.programMainArgNames program
+    mainArglist = [ (i32, LLVM.Name (toS name)) | name <- mainArgNames ]
+  define i32 (mangle "main") mainArglist $
+    codegenBody mainArglist (Intermediate.programMainFunction program)
+
   -- global functions
-  mapM_ codegenGlobal glbls
+  mapM_ codegenGlobal $ Intermediate.programGlobals program

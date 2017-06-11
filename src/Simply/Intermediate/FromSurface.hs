@@ -12,6 +12,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
 import Simply.Surface.AST (Name, BinaryOp (..), Lit (..))
+import qualified Simply.Surface.TypeCheck as Surface
 import qualified Simply.Intermediate.AST as Intermediate
 import qualified Simply.Surface.AST as Surface
 
@@ -45,10 +46,14 @@ type Transform = RWS Context (DList Intermediate.Global) Int
 -- Every type-correct "Simply" program can be transformed.
 --
 -- It is illegal to pass a program that is not type-correct.
-fromSurface :: Surface.Program -> Intermediate.Program
-fromSurface program = Intermediate.Program (DList.apply extra globals)
+fromSurface :: Surface.TypeSafeProgram -> Intermediate.Program
+fromSurface program = Intermediate.Program
+  { Intermediate.programGlobals = DList.apply extra globals
+  , Intermediate.programMainArgNames = mainArgNames
+  , Intermediate.programMainFunction = mainFunction
+  }
   where
-    (Intermediate.Program globals, extra) =
+    (Intermediate.Program globals mainArgNames mainFunction, extra) =
       evalRWS (transfProgram program) Map.empty 0
 
 
@@ -316,11 +321,21 @@ transfGlobal (Surface.Def name arglist retty body) = do
   pure $! Intermediate.DefFunction name arglist' retty' body'
 
 
-transfProgram :: Surface.Program -> Transform Intermediate.Program
-transfProgram (Surface.Program globals) = withGlobalContext $
-  Intermediate.Program <$> traverse transfGlobal globals
+transfProgram :: Surface.TypeSafeProgram -> Transform Intermediate.Program
+transfProgram program = withGlobalContext $ do
+  globals' <- traverse transfGlobal $ Surface.programGlobals program
+  main' <- with mainArglist $
+    convert Intermediate.TInt =<< transfExpr (Surface.programMainFunction program)
+  pure $! Intermediate.Program globals' mainArgNames main'
   where
-    withGlobalContext = local . const $ Map.fromList
+    globals = Surface.programGlobals program
+    mainArgNames = Surface.programMainArgNames program
+    mainArglist = [ (name, Intermediate.TInt) | name <- mainArgNames ]
+    mainType =
+      let argtys = map (const Intermediate.TInt) mainArgNames in
+      Intermediate.TFunction argtys Intermediate.TInt
+    withGlobalContext = local . const $ Map.fromList $
+      ("main", GlobalVar mainType) :
       [ (name, GlobalVar ty)
       | Surface.Def name arglist retty _body <- globals
       , let ty = Intermediate.TFunction [ transfType t | (_, t) <- arglist ] (transfType retty)

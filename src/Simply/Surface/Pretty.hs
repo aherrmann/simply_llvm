@@ -1,10 +1,20 @@
 module Simply.Surface.Pretty
-  ( prettyPrint
+  (
+    -- * Convenient Interface
+    prettyPrint
   , prettyText
   , prettyPlainText
   , prettyPlainTextFast
 
+    -- * Pretty Printing
   , ppProgram
+  , ppName
+  , ppType
+  , ppExpr
+
+    -- * Syntax Highlighting
+  , Highlight (..)
+  , highlightTerminal
   ) where
 
 import Protolude hiding (Type, group)
@@ -15,6 +25,10 @@ import Data.Text.Prettyprint.Doc.Render.Terminal (Color(..), color, colorDull, b
 import qualified Data.Text.Prettyprint.Doc.Render.Terminal as Render.Terminal
 
 import Simply.Surface.AST
+
+
+----------------------------------------------------------------------
+-- Convenient Interface
 
 prettyPrint :: Program -> IO ()
 prettyPrint =
@@ -36,25 +50,8 @@ prettyPlainTextFast :: Program -> Text
 prettyPlainTextFast = Render.Text.renderStrict . layoutCompact . ppProgram
 
 
-data Highlight
-  = HlName
-  | HlKeyword
-  | HlType
-  | HlBinaryOp
-  | HlSymbol
-  | HlLiteral
-  deriving (Eq, Show)
-
-
-highlightTerminal :: Highlight -> Render.Terminal.AnsiStyle
-highlightTerminal = \case
-  HlName -> mempty
-  HlKeyword -> colorDull Blue
-  HlType -> color Red
-  HlBinaryOp -> colorDull Blue
-  HlSymbol -> bold <> colorDull Blue
-  HlLiteral -> color Red
-
+----------------------------------------------------------------------
+-- Pretty Printing
 
 ppProgram :: Program -> Doc Highlight
 ppProgram (Program globals) =
@@ -239,3 +236,27 @@ ppEquals = annotate HlSymbol equals
 parensIf :: Bool -> Doc Highlight -> Doc Highlight
 parensIf True = parens . align
 parensIf False = identity
+
+
+----------------------------------------------------------------------
+-- Syntax Highlighting
+
+data Highlight
+  = HlName
+  | HlKeyword
+  | HlType
+  | HlBinaryOp
+  | HlSymbol
+  | HlLiteral
+  | HlError
+  deriving (Eq, Show)
+
+highlightTerminal :: Highlight -> Render.Terminal.AnsiStyle
+highlightTerminal = \case
+  HlName -> mempty
+  HlKeyword -> colorDull Blue
+  HlType -> color Red
+  HlBinaryOp -> colorDull Blue
+  HlSymbol -> bold <> colorDull Blue
+  HlLiteral -> color Red
+  HlError -> bold <> color Red

@@ -8,7 +8,7 @@ import qualified Data.Map as Map
 import qualified Data.List as List
 
 import LLVM.AST hiding (callingConvention, functionAttributes)
-import LLVM.AST.Global
+import LLVM.AST.Global as G
 import LLVM.AST.Type
 
 import qualified LLVM.AST as AST
@@ -86,6 +86,40 @@ external retty label argtys = addDefn $
   , returnType  = retty
   , basicBlocks = []
   }
+
+
+-- | Define the program entry point
+entryPoint :: Word32 -> LLVM ()
+entryPoint argc = addDefn $
+  GlobalDefinition $ functionDefaults
+    { name = Name "__entry_point"
+    , parameters = ([Parameter (ptr int) (Name "argv") []], False)
+    , returnType = int
+    , basicBlocks = body
+    }
+  where
+    body = createBlocks . execCodegen $ do
+      _ <- setBlock =<< addBlock entryBlockName
+      args <- forM (take argc' [0..]) $ \ i -> do
+        p <- getElementPtr (ptr int) argv [cint i]
+        load int p
+      result <- call int main args
+      ret result
+    argc' = fromIntegral argc
+    argv = LocalReference (ptr int) (Name "argv")
+    main = cons $ global (ptr mainty) (Name "simply_main")
+    mainty = fn int (replicate argc' int)
+
+
+-- | Define a global constant
+constant :: Type -> Name -> C.Constant -> LLVM ()
+constant ty name val = addDefn $
+  GlobalDefinition globalVariableDefaults
+    { name = name
+    , isConstant = True
+    , G.type' = ty
+    , initializer = Just val
+    }
 
 
 ---------------------------------------------------------------------------------

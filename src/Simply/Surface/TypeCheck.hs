@@ -2,130 +2,111 @@
 
 module Simply.Surface.TypeCheck
   (
+    -- * Convenient Interface
+    typeCheck
+  , typeCheck'
+
+    -- * Type Checked Program
+  , TypeSafeProgram
+  , programMainNumArgs
+  , programMainArgNames
+  , programMainFunction
+  , programGlobals
+
     -- * Error Handling
-    ErrorCode (..)
+  , TypeCheckError (..)
   , ExprError (..)
   , GlobalError (..)
   , ProgramError (..)
-
-    -- * Type Checker
-  , Context
-  , checkExpr
-  , checkGlobal
-  , checkProgram
-
-    -- * IO Interface
-  , typeCheck
   ) where
 
-import Protolude hiding (Type)
+import Protolude hiding (Type, group)
 
-import Control.Arrow ((&&&))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
-import Text.Show.Prettyprint (prettyPrint)
+import Data.Text.Prettyprint.Doc
+import qualified Data.Text.Prettyprint.Doc.Render.Terminal as Render.Terminal
 
 import Simply.Surface.AST
+import Simply.Surface.Parse (isKeyword)
+import Simply.Surface.Pretty hiding (prettyPrint)
 
 
 ----------------------------------------------------------------------
--- Error Handling
+-- Convenient Interface
 
--- | Specific errors that occur during type-checking
-data ErrorCode
-  = UndefinedReference Name
-    -- ^ an undefined variable was referenced
-  | EmptyName
-    -- ^ a variable name may not be empty
-  | WrongType Type Type
-    -- ^ mismatch between /expected/ and /actual/ type
-  | TypeMismatch Type Type
-    -- ^ mismatch between two types that should be equal
-  | NotAFunction Type
-    -- ^ expected a function but got something else
-  | RecurringArgumentName [Arg]
-    -- ^ an argument name appears more than once in an argument list
-  | RecurringGlobalNames [Name]
-    -- ^ these global names appear more than once
-  | IllegalMainType Type
-    -- ^ the main function must be a function from zero or more Int to Int
-  | NoMainFunction
-    -- ^ a program must have exactly one main function
-  deriving (Show, Eq, Ord, Generic, Typeable)
+typeCheck :: Program -> Either (Doc Highlight) TypeSafeProgram
+typeCheck = first ppProgramError . checkProgram
+
+-- | type-check the program, print and abort if an error occurs
+typeCheck' :: Program -> IO TypeSafeProgram
+typeCheck' = either printErrorAndDie pure . checkProgram
+  where
+    printErrorAndDie err = do
+      Render.Terminal.renderIO stderr $
+        layoutSmart defaultLayoutOptions $
+        reAnnotate highlightTerminal $
+        ppProgramError err
+      exitFailure
 
 
--- | A type error within an expression
-data ExprError
-  = ExprError ErrorCode [Expr]
-    -- ^ it carries an error code
-    -- and a trace of expressions
-    -- in which the error occurred (outside in)
-  deriving (Show, Eq, Ord, Generic, Typeable)
+----------------------------------------------------------------------
+-- Type Checked Program
 
+data TypeSafeProgram = TypeSafeProgram
+  { programGlobals :: [Global]
+  , programMainArgNames :: [Name]
+  , programMainFunction :: Expr
+  }
+  deriving (Show, Eq, Ord, Generic)
 
--- | Extend the trace in an error by the given expression.
--- Identity on success.
-exprErrorTrace :: Expr -> Either ExprError a -> Either ExprError a
-exprErrorTrace expr = \case
-  Left (ExprError code exprs) -> Left (ExprError code (expr:exprs))
-  Right a -> Right a
-
-
--- | Packs an error code into an expression error with a singleton trace.
-throwExprError :: Expr -> ErrorCode -> Either ExprError a
-throwExprError expr code = Left $! ExprError code [expr]
-
-
--- | Packs an error code into an expression error with an empty trace.
-throwExprError_ :: ErrorCode -> Either ExprError a
-throwExprError_ code = Left $! ExprError code []
-
-
--- | A type error within a global binding
-data GlobalError
-  = GlobalError Name ErrorCode
-    -- ^ an error directly in the global binding (not in its body)
-  | GlobalBodyError Name ExprError
-    -- ^ it carries the name of the global binding
-    -- and the error that occurred in the body of the binding
-  deriving (Show, Eq, Ord, Generic, Typeable)
-
-
--- | Forward an expression error
--- in the body of a global binding
--- as a global error
-catchGlobalBodyError :: Name -> Either ExprError a -> Either GlobalError a
-catchGlobalBodyError name = \case
-  Left err -> Left $! GlobalBodyError name err
-  Right a -> Right a
-
-
--- | A type error with the program
-data ProgramError
-  = ProgramError ErrorCode
-    -- ^ an error directly in the program definition
-    -- (not a global binding)
-  | ProgramGlobalError GlobalError
-    -- ^ an error with a global binding
-  deriving (Show, Eq, Ord, Generic, Typeable)
-
-
--- | Forward a global error
--- in a global binding of the program
--- as a program error
-catchProgramGlobalError :: Either GlobalError a -> Either ProgramError a
-catchProgramGlobalError = \case
-  Left err -> Left $! ProgramGlobalError err
-  Right a -> Right a
+programMainNumArgs :: TypeSafeProgram -> Int
+programMainNumArgs = length . programMainArgNames
 
 
 ----------------------------------------------------------------------
 -- Type Checker
 
-
 type Context = Map Name Type
 
+with :: Context -> [Arg] -> Context
+with ctx arglist = Map.fromList arglist `Map.union` ctx
+
+checkProgram :: Program -> Either ProgramError TypeSafeProgram
+checkProgram (Program globals) = do
+  -- check for recurring global names
+  let nameMultiples = enlistMultiples (map globalName globals)
+  unless (null nameMultiples) $
+    throwProgramError $! RecurringGlobalNames nameMultiples
+  -- check global definitions
+  rethrowProgramGlobalError $ forM_ globals $ checkGlobal ctx
+  let globals' = Map.fromList [ (globalName g, g) | g <- globals ]
+  -- check main function
+  main <- maybe (throwProgramError NoMainFunction) pure $
+    Map.lookup "main" globals'
+  let
+    Def _ mainArglist mainRetty mainBody = main
+    mainArgTypes = argTypes mainArglist
+    mainArgNames = argNames mainArglist
+  unless (all (== TInt) mainArgTypes && mainRetty == TInt) $
+    throwProgramError $! IllegalMainFunction (foldTArr mainArgTypes mainRetty)
+  -- Construct type checked program
+  pure $! TypeSafeProgram
+    { programGlobals = Map.elems $ Map.delete "main" globals'
+    , programMainArgNames = mainArgNames
+    , programMainFunction = mainBody
+    }
+  where
+    ctx = Map.fromList $ map nameAndType globals
+    nameAndType global = (globalName global, globalType global)
+
+checkGlobal :: Context -> Global -> Either GlobalError ()
+checkGlobal ctx (Def name arglist retty body) = do
+  bodyty <- rethrowGlobalBodyError name $
+    checkExpr (ctx `with` arglist) body
+  unless (bodyty == retty) $
+    throwError $! GlobalError name (ReturnTypeMismatch retty bodyty)
 
 checkExpr :: Context -> Expr -> Either ExprError Type
 checkExpr ctx expr = exprErrorTrace expr $ case expr of
@@ -133,33 +114,32 @@ checkExpr ctx expr = exprErrorTrace expr $ case expr of
   Lit (LInt _) -> pure TInt
   Lit (LBool _) -> pure TBool
 
-  Var name ->
+  Var name -> do
+    first exprError_ $ checkName name
     case Map.lookup name ctx of
-      Nothing -> throwExprError_ $! UndefinedReference name
+      Nothing -> throwExprError_ $! VariableNotInScope name
       Just ty -> pure ty
 
-  Let name e1 e2 -> do
-    unless (Text.length name > 0) $ throwExprError_ EmptyName
-    ty1 <- checkExpr ctx e1
-    ty2 <- checkExpr (Map.insert name ty1 ctx) e2
-    pure ty2
+  Let name bound body -> do
+    boundty <- checkExpr ctx bound
+    checkExpr (Map.insert name boundty ctx) body
 
-  If cond th el -> do
-    tyCond <- checkExpr ctx cond
-    unless (tyCond == TBool) $
-      throwExprError cond (WrongType TBool tyCond)
-    tyTh <- checkExpr ctx th
-    tyEl <- checkExpr ctx el
-    unless (tyTh == tyEl) $ throwExprError_ (TypeMismatch tyTh tyEl)
-    pure tyTh
+  If cond then_ else_ -> do
+    condty <- checkExpr ctx cond
+    unless (condty == TBool) $
+      throwExprError cond $! ExpectedButGot TBool condty
+    thenty <- checkExpr ctx then_
+    elsety <- checkExpr ctx else_
+    unless (thenty == elsety) $ throwExprError_ (NotTheSame thenty elsety)
+    pure thenty
 
   BinaryOp op a b -> do
-    tyA <- checkExpr ctx a
-    unless (tyA == TInt) $
-      throwExprError a (WrongType TInt tyA)
-    tyB <- checkExpr ctx b
-    unless (tyB == TInt) $
-      throwExprError b (WrongType TInt tyB)
+    aty <- checkExpr ctx a
+    unless (aty == TInt) $
+      throwExprError a (ExpectedButGot TInt aty)
+    bty <- checkExpr ctx b
+    unless (bty == TInt) $
+      throwExprError b (ExpectedButGot TInt bty)
     case op of
       Add -> pure TInt
       Sub -> pure TInt
@@ -171,64 +151,193 @@ checkExpr ctx expr = exprErrorTrace expr $ case expr of
     xty <- checkExpr ctx x
     case fty of
       TArr argty retty -> do
-        unless (xty == argty) $ throwExprError_ (TypeMismatch argty xty)
+        unless (xty == argty) $ throwExprError_ (ExpectedButGot argty xty)
         pure retty
       _ -> throwExprError f (NotAFunction fty)
 
-  Lam args body -> do
-    forM_ args $ \(name, _) ->
-      unless (Text.length name > 0) $ throwExprError_ EmptyName
-    let argCtx = Map.fromList args
-    unless (Map.size argCtx == length args) $
-      throwExprError_ (RecurringArgumentName args)
-    retty <- checkExpr (argCtx `Map.union` ctx) body
-    pure $! foldTArr (map snd args) retty
+  Lam arglist body -> do
+    let argMultiples = enlistMultiples (argNames arglist)
+    unless (null argMultiples) $
+      throwExprError_ (RecurringArgumentNames argMultiples)
+    retty <- checkExpr (ctx `with` arglist) body
+    pure $! foldTArr (argTypes arglist) retty
 
+checkName :: Name -> Either TypeCheckError ()
+checkName name
+  | Text.null name = throwError NameIsEmpty
+  | isKeyword name = throwError $! NameIsKeyword name
+  | otherwise = pure ()
 
-checkGlobal :: Context -> Global -> Either GlobalError ()
-checkGlobal ctx (Def name args retty body) = do
-  unless (Text.length name > 0) $ Left $! GlobalError name EmptyName
-  forM_ args $ \(argname, _) ->
-    unless (Text.length argname > 0) $ Left $! GlobalError name EmptyName
-  let argCtx = Map.fromList args
-  bodyTy <- catchGlobalBodyError name $
-    checkExpr (argCtx `Map.union` ctx) body
-  unless (bodyTy == retty) $
-    Left $! GlobalError name (TypeMismatch retty bodyTy)
-
-
-checkProgram :: Program -> Either ProgramError ()
-checkProgram (Program globals) = do
-  unless (null multiNames) $
-    Left $! ProgramError $ RecurringGlobalNames multiNames
-  _ <- catchProgramGlobalError $ traverse (checkGlobal ctx) globals
-  case Map.lookup "main" ctx of
-    Nothing -> Left $! ProgramError NoMainFunction
-    Just mainty
-      | (args, ret) <- unfoldTArr mainty
-      , all (==TInt) args && ret == TInt
-      -> Right ()
-      | otherwise
-      -> Left $! ProgramError $ IllegalMainType mainty
+countOccurrences :: Ord a => [a] -> Map a Int
+countOccurrences = foldl' (flip insert) Map.empty
   where
-    ctx = Map.fromList $ map (globalName &&& globalType) globals
-    multiNames = globals
-      & map globalName
-      & foldl' insert Map.empty
-      & Map.filter (>1)
-      & Map.keys
-    insert m n = Map.insertWith (+) n (1::Int) m
+    insert item = Map.insertWith (+) item 1
+
+enlistMultiples :: Ord a => [a] -> [a]
+enlistMultiples = Map.keys . Map.filter (> 1) . countOccurrences
 
 
 ----------------------------------------------------------------------
--- IO Interface
+-- Error Handling
+
+-- | A type error with the program
+data ProgramError
+  = ProgramError TypeCheckError
+    -- ^ an error directly in the program definition
+    -- (not a global binding)
+  | ProgramGlobalError GlobalError
+    -- ^ an error with a global binding
+  deriving (Show, Eq, Ord, Generic, Typeable)
+
+-- | A type error within a global binding
+data GlobalError
+  = GlobalError Name TypeCheckError
+    -- ^ an error directly in the global binding (not in its body)
+  | GlobalBodyError Name ExprError
+    -- ^ it carries the name of the global binding
+    -- and the error that occurred in the body of the binding
+  deriving (Show, Eq, Ord, Generic, Typeable)
+
+-- | A type error within an expression
+data ExprError
+  = ExprError TypeCheckError [Expr]
+    -- ^ it carries an error code
+    -- and a trace of expressions
+    -- in which the error occurred (outside in)
+  deriving (Show, Eq, Ord, Generic, Typeable)
+
+-- | Specific errors that occur during type-checking
+data TypeCheckError
+  = NameIsEmpty
+    -- ^ The empty string is not a valid name
+  | NameIsKeyword Name
+    -- ^ A keyword is not a valid name
+  | VariableNotInScope Name
+    -- ^ Reference to unknown variable
+  | ExpectedButGot Type Type
+    -- ^ Value of unexpected type encountered
+  | NotTheSame Type Type
+    -- ^ Two values should have the same type but don't
+  | NotAFunction Type
+    -- ^ Expected a function
+  | RecurringArgumentNames [Name]
+    -- ^ An argument name is used multiple times in one argument list
+  | ReturnTypeMismatch Type Type
+    -- ^ The return type does not match the body type
+  | RecurringGlobalNames [Name]
+    -- ^ Multiple global definitions share a name
+  | IllegalMainFunction Type
+    -- ^ The main function must be a function from integers to integer
+  | NoMainFunction
+    -- ^ A program has to have a main function
+  deriving (Show, Eq, Ord, Generic, Typeable)
 
 
--- | type-check the program, print and abort if an error occurs
-typeCheck :: Program -> IO Program
-typeCheck prog =
-  case checkProgram prog of
-    Left err -> do
-      prettyPrint err
-      panic "Type-checking error"
-    Right _ -> pure prog
+throwProgramError :: TypeCheckError -> Either ProgramError a
+throwProgramError = first ProgramError . throwError
+
+-- | Forward a global error
+-- in a global binding of the program
+-- as a program error
+rethrowProgramGlobalError :: Either GlobalError a -> Either ProgramError a
+rethrowProgramGlobalError = first ProgramGlobalError
+
+-- | Forward an expression error
+-- in the body of a global binding
+-- as a global error
+rethrowGlobalBodyError :: Name -> Either ExprError a -> Either GlobalError a
+rethrowGlobalBodyError name = first (GlobalBodyError name)
+
+exprError :: Expr -> TypeCheckError -> ExprError
+exprError expr e = ExprError e [expr]
+
+exprError_ :: TypeCheckError -> ExprError
+exprError_ e = ExprError e []
+
+-- | Extend the trace in an error by the given expression.
+-- Identity on success.
+exprErrorTrace :: Expr -> Either ExprError a -> Either ExprError a
+exprErrorTrace expr = \case
+  Left (ExprError code exprs) -> Left (ExprError code (expr:exprs))
+  Right a -> Right a
+
+-- | Packs an error code into an expression error with a singleton trace.
+throwExprError :: Expr -> TypeCheckError -> Either ExprError a
+throwExprError expr = first (exprError expr) . throwError
+
+-- | Packs an error code into an expression error with an empty trace.
+throwExprError_ :: TypeCheckError -> Either ExprError a
+throwExprError_ = first exprError_ . throwError
+
+
+ppProgramError :: ProgramError -> Doc Highlight
+ppProgramError (ProgramError err) =
+  ppErrMsg "Type-Checking Error" $
+    ppTypeCheckError err
+ppProgramError (ProgramGlobalError err) =
+  ppErrMsg "Type-Checking Error" $
+    ppGlobalError err
+
+ppGlobalError :: GlobalError -> Doc Highlight
+ppGlobalError (GlobalError name err) =
+  ppErrMsg ("Error with" <+> dquote <> ppName name <> dquote) $
+    ppTypeCheckError err
+ppGlobalError (GlobalBodyError name err) =
+  ppErrMsg ("Error in" <+> dquote <> ppName name <> dquote) $
+    ppExprError err
+
+ppExprError :: ExprError -> Doc Highlight
+ppExprError (ExprError err []) = ppTypeCheckError err
+ppExprError (ExprError err ctx) =
+  let
+    ppCtxErr ctxErr' =
+      vsep
+        [ "Encountered in"
+        , indent 2 ctxErr'
+        ]
+    ctx' = vsep $ map (ppCtxErr . ppExpr) $ take 3 $ reverse ctx
+  in
+  vsep [ppTypeCheckError err, ctx']
+
+ppTypeCheckError :: TypeCheckError -> Doc Highlight
+ppTypeCheckError = \case
+  NameIsEmpty -> ppErrMsg "Invalid name"
+    "The empty string is not a valid name."
+  NameIsKeyword name -> ppErrMsg "Invalid name"
+    dquote <> pretty name <> dquote <+> "is a keyword."
+  VariableNotInScope name -> ppErrMsg "Variable not in scope" $
+    dquote <> pretty name <> dquote <+> "is not defined."
+  ExpectedButGot expected got -> ppErrMsg "Unexpected type" $
+    let
+      expected' = nest 2 $ vsep [ "Expected", ppType expected ]
+      got' = nest 2 $ vsep [ "but got", ppType got ]
+    in
+    group $ vsep [ expected', got' ]
+  NotTheSame a b -> ppErrMsg "Type mismatch" $
+    ppType a <+> "and" <+> ppType b <+> "are not the same type."
+  NotAFunction ty -> ppErrMsg "Too many arguments" $
+    ppType ty <+> "is not a function type."
+  RecurringArgumentNames names -> ppErrMsg "Recurring argument names" $
+    "The following names are used multiple times" <+> pretty names
+  ReturnTypeMismatch expected got -> ppErrMsg "Mismatch in return type" $
+    let
+      expected' = nest 2 $ vsep [ "Expected", ppType expected ]
+      got' = nest 2 $ vsep [ "but got", ppType got ]
+    in
+    group $ vsep [ expected', got' ]
+  RecurringGlobalNames names -> ppErrMsg "Recurring global names" $
+    "The following names are used multiple times" <+> pretty names
+  IllegalMainFunction mainty -> ppErrMsg "Illegal main function" $
+    "The main function must be a function from integers to integers. \
+    \Instead it has the type" <+> ppType mainty
+  NoMainFunction -> ppErrMsg "No main function"
+    "A program has to have a main function."
+
+ppErrMsg :: Doc Highlight -> Doc Highlight -> Doc Highlight
+ppErrMsg heading err =
+  let heading' = annotate HlError heading <> colon
+  in
+  group $
+    vsep [ heading', indent 2 err ]
+    `flatAlt`
+    hsep [ heading', err ]

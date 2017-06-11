@@ -13,6 +13,7 @@ module Simply.Intermediate.AST
   , Program (..)
 
     -- * Accessors
+  , programMainNumArgs
   , exprType
   , freeVars
 
@@ -93,15 +94,19 @@ data Global
 
 
 -- | the program
-newtype Program
-  = Program [Global]
-    -- ^ A program is a list of global definitions and a main function.
-    -- We specify the return type explicitly.
+data Program = Program
+  { programGlobals :: [Global]
+  , programMainArgNames :: [Name]
+  , programMainFunction :: Expr
+  }
   deriving (Show, Eq, Ord, Generic)
 
 
 ----------------------------------------------------------------------
 -- Accessors
+
+programMainNumArgs :: Program -> Int
+programMainNumArgs = length . programMainArgNames
 
 -- | extract the type of an expression
 exprType :: Expr -> Type

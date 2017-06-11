@@ -28,6 +28,8 @@ module Simply.Surface.AST
   , (@.)
 
     -- * Accessors
+  , argNames
+  , argTypes
   , freeVars
   , globalName
   , globalType
@@ -246,6 +248,13 @@ infixl 9 @.
 
 ----------------------------------------------------------------------
 -- Accessors
+
+argNames :: [Arg] -> [Name]
+argNames = map fst
+
+
+argTypes :: [Arg] -> [Type]
+argTypes = map snd
 
 -- | all unbound variables in an expression
 -- (does not take global bindings into account)

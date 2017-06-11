@@ -30,12 +30,12 @@ $ stack repl
 and start exploring the code:
 
 ``` hs
-λ> ex01a_factorial & Simply.typeCheck >>= prettyPrint
-λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface >>= prettyPrint
-λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVM
-λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVMOpt optInline
-λ> ex01a_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printAssemblyOpt optInline
-λ> ex01b_factorial & Simply.typeCheck & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= exec [5]
+λ> ex01a_factorial & Surface.prettyPrint
+λ> ex01a_factorial & Simply.typeCheck' & fmap Intermediate.fromSurface >>= prettyPrint
+λ> ex01a_factorial & Simply.typeCheck' & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVM
+λ> ex01a_factorial & Simply.typeCheck' & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printLLVMOpt optInline
+λ> ex01a_factorial & Simply.typeCheck' & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= printAssemblyOpt optInline
+λ> ex01b_factorial & Simply.typeCheck' & fmap Intermediate.fromSurface & fmap LLVM.fromIntermediate >>= exec [5]
 ```
 
 The examples can be loaded by in the interactive session with:
@@ -43,6 +43,15 @@ The examples can be loaded by in the interactive session with:
 ``` sh
 λ> :load Example.hs
 λ> ex5
+```
+
+Example programs in the language *Simply* are provided in [`simply_examples`](simply_examples).
+You can compile and run them as follows:
+
+``` sh
+$ cabal run simply simply_examples/factorial.simply factorial
+$ ./factorial
+$ ./factorial 5
 ```
 
 You should have a look at the [slides](slides/slides.md)

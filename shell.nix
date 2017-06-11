@@ -16,6 +16,7 @@ let
       prettyprinter-ansi-terminal
       protolude
       show-prettyprint
+      temporary
     ]);
 in
 pkgs.stdenv.mkDerivation {

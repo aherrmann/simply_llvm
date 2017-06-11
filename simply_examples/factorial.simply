@@ -1,0 +1,11 @@
+def main (n : Int) : Int
+= factorial n
+
+def factorial : Int -> Int
+= factorial' 1
+
+def factorial' (acc : Int) (n : Int) : Int
+= if n == 0 then
+    acc
+  else
+    factorial' (acc * n) (n - 1)

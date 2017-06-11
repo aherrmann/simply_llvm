@@ -11,6 +11,12 @@ module Simply.LLVM.JIT
   , withExec
   , withExecOpt
 
+  , writeObjectFile
+  , writeObjectFileOpt
+
+  , buildExecutableOpt
+  , buildExecutable
+
   , optNone
   , optNoinline
   , optInline
@@ -31,6 +37,9 @@ import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Text.Lazy.Encoding as LazyText
 import qualified Data.Text.Lazy.IO as LazyText
 import Foreign.LibFFI (argInt32, callFFI, retInt32)
+import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
+import System.Process (callProcess)
 
 import qualified LLVM.AST as AST
 
@@ -41,7 +50,10 @@ import LLVM.Exception (ParseFailureException (..), VerifyException (..))
 import LLVM.ExecutionEngine (getFunction, withMCJIT, withModuleInEngine)
 import LLVM.Internal.Module (withModuleFromLLVMAssembly)
 import LLVM.Module
-  (Module, withModuleFromAST, moduleLLVMAssembly, moduleTargetAssembly)
+  ( File (..), Module
+  , withModuleFromAST, moduleLLVMAssembly, moduleTargetAssembly
+  , writeObjectToFile
+  )
 import LLVM.PassManager
   ( PassManager, PassSetSpec (..)
   , defaultCuratedPassSetSpec, runPassManager, withPassManager
@@ -52,6 +64,10 @@ import LLVM.Target
   , getTargetMachineDataLayout, getProcessTargetTriple
   , withHostTargetMachine, withTargetLibraryInfo
   )
+
+import Simply.LLVM.FromIntermediate (mangle)
+
+import Paths_simply_llvm (getDataFileName)
 
 
 ----------------------------------------------------------------------
@@ -110,6 +126,27 @@ verifyModule ast = (Right <$> runJIT parseAndVerify) `catches`
 
 writeModuleFile :: FilePath -> AST.Module -> IO ()
 writeModuleFile path = LazyText.writeFile path . ppllvm
+
+writeObjectFileOpt :: Optimizer -> FilePath -> AST.Module -> IO ()
+writeObjectFileOpt opt path ast = runJIT $ do
+  m <- moduleFromAST ast
+  opt m
+  machine <- using $ managed withHostTargetMachine
+  liftIO $ writeObjectToFile machine (File path) m
+
+writeObjectFile :: FilePath -> AST.Module -> IO ()
+writeObjectFile = writeObjectFileOpt optNone
+
+buildExecutableOpt :: Optimizer -> FilePath -> AST.Module -> IO ()
+buildExecutableOpt opt path ast = runJIT $ do
+  tmpdir <- using $ managed $ withSystemTempDirectory "simply-llvm-"
+  let objfile = tmpdir </> "simply.o"
+  mainfile <- liftIO $ getDataFileName "data/main.c"
+  liftIO $ writeObjectFileOpt opt (tmpdir </> "simply.o") ast
+  liftIO $ callProcess "clang" [objfile, mainfile, "-o", path]
+
+buildExecutable :: FilePath -> AST.Module -> IO ()
+buildExecutable = buildExecutableOpt optNone
 
 
 ----------------------------------------------------------------------
@@ -217,6 +254,6 @@ compile m = do
   ctx <- ask
   engine <- using $ managed (withMCJIT ctx optlevel model framePtrElim fastInstr)
   bin <- using $ managed (withModuleInEngine engine m)
-  mbMainFun <- liftIO $ getFunction bin (AST.Name "main")
+  mbMainFun <- liftIO $ getFunction bin (AST.Name $ mangle "main")
   mainFun <- maybe (throwIO MissingEntryPoint) pure mbMainFun
   pure (callFFI mainFun retInt32 . map argInt32)

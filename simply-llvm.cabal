@@ -14,6 +14,7 @@ maintainer:          andreash87@gmx.ch
 category:            Development
 build-type:          Simple
 -- extra-source-files:
+data-files:          data/main.c
 cabal-version:       >=1.10
 source-repository head
   type:              git
@@ -32,7 +33,7 @@ library
                      , Simply.LLVM.Codegen
                      , Simply.LLVM.JIT
                      , Simply.Orphans
-  -- other-modules:
+  other-modules:       Paths_simply_llvm
   ghc-options:         -Wall
   default-extensions:  NoImplicitPrelude
                        OverloadedStrings
@@ -46,6 +47,7 @@ library
                      , bytestring >=0.10 && <0.11
                      , containers >=0.5.6 && <0.5.8
                      , dlist >=0.8.0 && <0.8.1
+                     , filepath >=1.4 && <1.5
                      , libffi >= 0.1 && < 0.2
                      , llvm-hs == 4.2.*
                      , llvm-hs-pure == 4.1.*
@@ -58,6 +60,7 @@ library
                      , process >=1.4 && <1.5
                      , protolude >=0.1.7 && <0.1.11
                      , show-prettyprint >=0.1 && <0.2
+                     , temporary >=1.2 && <1.3
                      , text >=1.2.2 && <1.3
                      , transformers >=0.4.2 && <0.6
   hs-source-dirs:      src
@@ -83,4 +86,17 @@ Test-Suite test-simply
                      , text >=1.2.2 && <1.3
                      , simply-llvm
   hs-source-dirs:      test
+  default-language:    Haskell2010
+
+Executable simply
+  main-is:             Main.hs
+  ghc-options:         -Wall
+  default-extensions:  NoImplicitPrelude
+                       OverloadedStrings
+                       LambdaCase
+                       GeneralizedNewtypeDeriving
+  build-depends:       base >=4.8 && <4.10
+                     , protolude >=0.1.7 && <0.1.11
+                     , simply-llvm
+  hs-source-dirs:      exec
   default-language:    Haskell2010
