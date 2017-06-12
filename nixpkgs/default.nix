@@ -25,6 +25,38 @@ let
       };
     };
 
+    llvm_4 = (super.llvm_4.override { debugVersion = true; }).overrideAttrs (attrs:
+      let
+        shlib = if stdenv.isDarwin then "dylib" else "so";
+        inherit (self) stdenv;
+        release_version = "4.0.0";
+        shortVersion = with stdenv.lib;
+          concatStringsSep "." (take 2 (splitString "." release_version))
+        ;
+      in
+      {
+        # Need to fix broken `postInstall` phase in debug mode.
+        # See https://github.com/NixOS/nixpkgs/pull/26429
+        postInstall = ''
+          moveToOutput "share/man" "$man"
+        ''
+        + stdenv.lib.optionalString true ''
+          moveToOutput "lib/libLLVM-*" "$lib"
+          moveToOutput "lib/libLLVM.${shlib}" "$lib"
+          substituteInPlace "$out/lib/cmake/llvm/LLVMExports-debug.cmake" \
+            --replace "\''${_IMPORT_PREFIX}/lib/libLLVM-" "$lib/lib/libLLVM-"
+        ''
+        + stdenv.lib.optionalString (stdenv.isDarwin && enableSharedLibraries) ''
+          substituteInPlace "$out/lib/cmake/llvm/LLVMExports-debug.cmake" \
+            --replace "\''${_IMPORT_PREFIX}/lib/libLLVM.dylib" "$lib/lib/libLLVM.dylib"
+          install_name_tool -id $lib/lib/libLLVM.dylib $lib/lib/libLLVM.dylib
+          install_name_tool -change @rpath/libLLVM.dylib $lib/lib/libLLVM.dylib $out/bin/llvm-config
+          ln -s $lib/lib/libLLVM.dylib $lib/lib/libLLVM-${shortVersion}.dylib
+          ln -s $lib/lib/libLLVM.dylib $lib/lib/libLLVM-${release_version}.dylib
+        '';
+      })
+    ;
+
   };
 
 in
