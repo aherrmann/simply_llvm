@@ -4,9 +4,9 @@
 name:                simply-llvm
 version:             0.2.0.0
 synopsis:            Compile simply typed lambda calculuse using LLVM
--- description:         
+description:         A demo of llvm-hs         
 homepage:            https://github.com/aherrmann/simply_llvm
-license:             Unlicense
+license:             OtherLicense
 license-file:        UNLICENSE
 author:              Andreas Herrmann
 maintainer:          andreash87@gmx.ch
@@ -15,6 +15,9 @@ category:            Development
 build-type:          Simple
 -- extra-source-files:
 cabal-version:       >=1.10
+source-repository head
+  type:              git
+  location:          file:///.
 
 library
   exposed-modules:     Simply
