@@ -20,6 +20,5 @@ pkgs.stdenv.mkDerivation {
   ];
   shellHook = ''
     eval $(egrep ^export ${ghc}/bin/ghc)
-    PS1='nix:\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\W\[\033[00m\]$(__git_ps1 "(%s)")\$ '
   '';
 }
