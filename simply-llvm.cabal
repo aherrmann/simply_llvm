@@ -34,6 +34,7 @@ library
                        GeneralizedNewtypeDeriving
   other-extensions:    DeriveGeneric
                      , FlexibleContexts
+                     , MultiParamTypeClasses
   build-depends:       base >=4.8 && <4.10
                      , protolude >=0.1.7 && <0.1.11
                      , containers >=0.5.6 && <0.5.8
@@ -41,10 +42,11 @@ library
                      , transformers >=0.4.2 && <0.6
                      , text >=1.2.2 && <1.3
                      , dlist >=0.8.0 && <0.8.1
-                     , llvm-hs-pure == 4.0.*
-                     , llvm-hs == 4.0.*
+                     , llvm-hs-pure == 4.1.*
+                     , llvm-hs == 4.1.*
                      , libffi >= 0.1 && < 0.2
                      , pretty >= 1.1.2 && <1.1.4
                      , GenericPretty >=1.2.1 && <1.2.2
+                     , bytestring >=0.10 && <0.11
   hs-source-dirs:      src
   default-language:    Haskell2010

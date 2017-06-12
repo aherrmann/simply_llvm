@@ -1,7 +1,6 @@
 module Simply.LLVM.Codegen where
 
 import Protolude hiding (Type, local, void, local, one, zero)
-import Data.String (String, IsString(..))
 import Data.Word
 import Data.Function
 import qualified Data.Map as Map
@@ -21,6 +20,8 @@ import qualified LLVM.AST.IntegerPredicate as IP
 import qualified LLVM.AST.FloatingPointPredicate as FP
 import qualified LLVM.AST.CallingConvention as CC
 
+import Simply.Orphans ()
+
 -------------------------------------------------------------------------------
 -- Module Level
 -------------------------------------------------------------------------------
@@ -31,8 +32,8 @@ newtype LLVM a = LLVM (State AST.Module a)
 runLLVM :: AST.Module -> LLVM a -> AST.Module
 runLLVM mod (LLVM m) = execState m mod
 
-emptyModule :: String -> AST.Module
-emptyModule label = defaultModule { moduleName = label }
+emptyModule :: Text -> AST.Module
+emptyModule label = defaultModule { moduleName = toS label }
 
 addDefn :: Definition -> LLVM ()
 addDefn d = do
@@ -41,10 +42,10 @@ addDefn d = do
 
 
 -- | Define an externally visible function (used for main)
-define ::  Type -> String -> [(Type, Name)] -> Codegen a -> LLVM ()
+define ::  Type -> Text -> [(Type, Name)] -> Codegen a -> LLVM ()
 define retty label argtys body = addDefn $
   GlobalDefinition $ functionDefaults {
-    name        = Name label
+    name        = Name $ toS label
   , parameters  = ([Parameter ty nm [] | (ty, nm) <- argtys], False)
   , returnType  = retty
   , basicBlocks = bls
@@ -58,10 +59,10 @@ define retty label argtys body = addDefn $
 
 
 -- | Define an internal function (can be optimised away)
-internal ::  Type -> String -> [(Type, Name)] -> Codegen a -> LLVM ()
+internal ::  Type -> Text -> [(Type, Name)] -> Codegen a -> LLVM ()
 internal retty label argtys body = addDefn $
   GlobalDefinition $ functionDefaults {
-    name        = Name label
+    name        = Name $ toS label
   , linkage     = L.Private
   , parameters  = ([Parameter ty nm [] | (ty, nm) <- argtys], False)
   , returnType  = retty
@@ -77,10 +78,10 @@ internal retty label argtys body = addDefn $
 
 -- | Declare an external function that is not defined in the module
 -- (used for malloc)
-external ::  Type -> String -> [(Type, Name)] -> LLVM ()
+external ::  Type -> Text -> [(Type, Name)] -> LLVM ()
 external retty label argtys = addDefn $
   GlobalDefinition $ functionDefaults 
-  { name        = Name label
+  { name        = Name $ toS label
   , linkage     = L.External
   , parameters  = ([Parameter ty nm [] | (ty, nm) <- argtys], False)
   , returnType  = retty
@@ -160,22 +161,19 @@ nullP ty = cons (C.Null ty)
 -- Names
 -------------------------------------------------------------------------------
 
-type Names = Map.Map String Int
+type Names = Map.Map Text Int
 
-uniqueName :: String -> Names -> (String, Names)
+uniqueName :: Text -> Names -> (Text, Names)
 uniqueName nm ns =
   case Map.lookup nm ns of
     Nothing -> (nm,  Map.insert nm 0 ns)
-    Just ix -> (nm ++ show ix, Map.insert nm (ix+1) ns)
-
-instance IsString Name where
-  fromString = Name . fromString
+    Just ix -> (nm <> show ix, Map.insert nm (ix+1) ns)
 
 -------------------------------------------------------------------------------
 -- Codegen State
 -------------------------------------------------------------------------------
 
-type SymbolTable = [(String, Operand)]
+type SymbolTable = [(Text, Operand)]
 
 data CodegenState
   = CodegenState 
@@ -213,14 +211,14 @@ makeBlock (l, BlockState _ s t) = BasicBlock l s (maketerm t)
     maketerm (Just x) = x
     maketerm Nothing = panic $ "Block has no terminator: " <> show l
 
-entryBlockName :: String
+entryBlockName :: Text
 entryBlockName = "entry"
 
 emptyBlock :: Int -> BlockState
 emptyBlock i = BlockState i [] Nothing
 
 emptyCodegen :: CodegenState
-emptyCodegen = CodegenState (Name entryBlockName) Map.empty [] 1 0 Map.empty
+emptyCodegen = CodegenState (Name $ toS entryBlockName) Map.empty [] 1 0 Map.empty
 
 execCodegen :: Codegen a -> CodegenState
 execCodegen m = execState (runCodegen m) emptyCodegen
@@ -256,18 +254,18 @@ terminator trm = do
 entry :: Codegen Name
 entry = gets currentBlock
 
-addBlock :: String -> Codegen Name
+addBlock :: Text -> Codegen Name
 addBlock bname = do
   bls <- gets blocks
   ix <- gets blockCount
   nms <- gets names
   let new = emptyBlock ix
       (qname, supply) = uniqueName bname nms
-  modify $ \s -> s { blocks = Map.insert (Name qname) new bls
+  modify $ \s -> s { blocks = Map.insert (Name $ toS qname) new bls
                    , blockCount = ix + 1
                    , names = supply
                    }
-  return (Name qname)
+  return (Name $ toS qname)
 
 setBlock :: Name -> Codegen Name
 setBlock bname = do
@@ -294,12 +292,12 @@ current = do
 -- Symbol Table
 -------------------------------------------------------------------------------
 
-assign :: String -> Operand -> Codegen ()
+assign :: Text -> Operand -> Codegen ()
 assign var x = do
   lcls <- gets symtab
   modify $ \s -> s { symtab = (var, x) : lcls }
 
-getvar :: String -> Codegen Operand
+getvar :: Text -> Codegen Operand
 getvar var = do
   syms <- gets symtab
   case List.lookup var syms of

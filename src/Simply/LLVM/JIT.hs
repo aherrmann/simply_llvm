@@ -69,8 +69,8 @@ runJit = flip runContT (const $ pure ())
 
 parseModule :: Context -> AST.Module -> Jit Module
 parseModule ctx mod = do
-    m <- ContT $ throwLeft . withModuleFromAST ctx mod
-    liftIO $ throwLeft $ verify m
+    m <- ContT $ withModuleFromAST ctx mod
+    liftIO $ verify m
     pure m
 
 printLLVMOpt :: Optimizer -> AST.Module -> IO ()
@@ -89,8 +89,8 @@ printAssemblyOpt opt mod = runJit $ do
     context <- ContT withContext
     m <- parseModule context mod
     liftIO $ opt context m
-    machine <- ContT $ throwLeft . withHostTargetMachine
-    s <- liftIO $ throwLeft $ moduleTargetAssembly machine m
+    machine <- ContT $ withHostTargetMachine
+    s <- liftIO $ moduleTargetAssembly machine m
     liftIO $ putStrLn s
 
 printAssembly :: AST.Module -> IO ()
@@ -154,7 +154,7 @@ optInline context mod = withPassManager passes $ \pm ->
 optTarget :: Optimizer
 optTarget context mod = flip runContT pure $ do
     triple <- liftIO getProcessTargetTriple
-    machine <- ContT $ throwLeft . withHostTargetMachine
+    machine <- ContT $ withHostTargetMachine
     libraryInfo <- ContT $ withTargetLibraryInfo triple
     layout <- liftIO $ getTargetMachineDataLayout machine
     let passes = defaultCuratedPassSetSpec

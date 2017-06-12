@@ -15,7 +15,6 @@ import qualified LLVM.AST.IntegerPredicate as IP
 import LLVM.Context
 import LLVM.Module
 import LLVM.PassManager
-import LLVM.PrettyPrint
 import LLVM.Target
 
 
@@ -183,7 +182,7 @@ codegenBody
 codegenBody args' body = do
     -- extract argument list
     forM_ args' $ \(ty, AST.Name name) ->
-       assign name (local ty (AST.Name name))
+       assign (toS name) (local ty (AST.Name name))
 
     body' <- codegenExpr body
     ret body'
