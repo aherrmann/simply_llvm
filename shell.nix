@@ -16,7 +16,7 @@ in
   pkgs.stdenv.mkDerivation {
     name = "simply-llvm-env";
     buildInputs = [
-      ghc llvm_4 clang_4
+      cabal-install ghc llvm_4 clang_4
     ];
     shellHook = ''
       eval $(egrep ^export ${ghc}/bin/ghc)
