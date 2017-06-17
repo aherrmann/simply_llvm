@@ -6,6 +6,8 @@ import Protolude hiding (Type)
 
 import Text.PrettyPrint.GenericPretty (pp)
 
+import LLVM.Pretty (ppllvm)
+
 import Simply.Surface.AST
 import qualified Simply.Intermediate.AST as Intermediate
 import qualified Simply.Surface.TypeCheck as Simply

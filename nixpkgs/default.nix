@@ -16,12 +16,20 @@ let
     sha256 = "0bnh0yyjflhvc8vjrqsa25k7issnvkvgx149bnq7avka5mx2m99m";
   };
 
+  llvm-hs-pretty-repo = pkgs.fetchFromGitHub {
+    owner = "llvm-hs";
+    repo = "llvm-hs-pretty";
+    rev = "aeed01e4abc8d28ec1c0b681b55ebc4d0a15d5df";
+    sha256 = "0bblf21jwii2h61g46zgdrw5s0yxjj24m42d0akfp92x8y7yjcnw";
+  };
+
   overlay = self: super: with self; {
 
     haskellPackages = super.haskellPackages.override {
       overrides = self: super: with self; {
         llvm-hs-pure = callPackage (import "${llvm-hs-repo}/llvm-hs-pure") {};
         llvm-hs = callPackage (import "${llvm-hs-repo}/llvm-hs") { llvm-config = llvm_4; };
+        llvm-hs-pretty = callPackage (import llvm-hs-pretty-repo) {};
       };
     };
 

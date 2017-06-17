@@ -9,6 +9,7 @@ let
       hspec
       libffi
       llvm-hs
+      llvm-hs-pretty
       llvm-hs-pure
       managed
       pretty

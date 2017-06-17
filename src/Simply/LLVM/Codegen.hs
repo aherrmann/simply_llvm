@@ -243,6 +243,13 @@ instr ty ins = do
   modifyBlock (blk { stack = i ++ [ref := ins] } )
   return $ local ty ref
 
+instr_ :: Instruction -> Codegen ()
+instr_ ins = do
+  blk <- current
+  let i = stack blk
+  modifyBlock (blk { stack = i ++ [Do ins] } )
+  return ()
+
 terminator :: Named Terminator -> Codegen (Named Terminator)
 terminator trm = do
   blk <- current
@@ -404,8 +411,8 @@ malloc ty = do
   valP <- bitcast (ptr ty) anyP
   pure (anyP, valP)
 
-store :: Operand -> Operand -> Codegen Operand
-store dst val = instr void $ Store False dst val Nothing 0 []
+store :: Operand -> Operand -> Codegen ()
+store dst val = instr_ $ Store False dst val Nothing 0 []
 
 load :: Type -> Operand -> Codegen Operand
 load ty pointer = instr ty $ Load False pointer Nothing 0 []

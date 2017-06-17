@@ -23,7 +23,7 @@ run1 prog args = withProgram prog $ for args . apply1
   where apply1 f x = f [x]
 
 
-verifyProgram :: Simply.Program -> IO (Either JIT.VerifyException ())
+verifyProgram :: Simply.Program -> IO (Either Text ())
 verifyProgram = JIT.verifyModule . LLVM.fromIntermediate . Intermediate.fromSurface
 
 

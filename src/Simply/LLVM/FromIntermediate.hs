@@ -124,7 +124,7 @@ codegenExpr expr = case expr of
       closurety = closure retty' argtys'
       funty = fn retty' (anyPtr : argtys')
       name' = LLVM.Name $ toS name
-    buildStruct closurety [cons $ global funty name', envptr']
+    buildStruct closurety [cons $ global (ptr funty) name', envptr']
 
   CallClosure retty cl args -> do
     let TClosure clargtys clretty = exprType cl

@@ -19,13 +19,18 @@ module Simply.LLVM.JIT
   , optTarget
 
   , verifyModule
-  , VerifyException (..)
+
+  , writeModuleFile
   ) where
 
 import Protolude
 
+import Control.Exception (Handler (..))
 import Control.Monad.Managed
   (Managed, MonadManaged, managed, runManaged, using, with)
+import qualified Data.ByteString.Lazy as LazyByteString
+import qualified Data.Text.Lazy.Encoding as LazyText
+import qualified Data.Text.Lazy.IO as LazyText
 import Foreign.LibFFI (argInt32, callFFI, retInt32)
 
 import qualified LLVM.AST as AST
@@ -33,14 +38,16 @@ import qualified LLVM.AST as AST
 import LLVM.Analysis (verify)
 import LLVM.AST.DataLayout (DataLayout)
 import LLVM.Context (Context, withContext)
-import LLVM.Exception (VerifyException (..))
+import LLVM.Exception (ParseFailureException (..), VerifyException (..))
 import LLVM.ExecutionEngine (getFunction, withMCJIT, withModuleInEngine)
+import LLVM.Internal.Module (withModuleFromLLVMAssembly)
 import LLVM.Module
   (Module, withModuleFromAST, moduleLLVMAssembly, moduleTargetAssembly)
 import LLVM.PassManager
   ( PassManager, PassSetSpec (..)
   , defaultCuratedPassSetSpec, runPassManager, withPassManager
   )
+import LLVM.Pretty (ppllvm)
 import LLVM.Target
   ( TargetLibraryInfo, TargetMachine
   , getTargetMachineDataLayout, getProcessTargetTriple
@@ -55,7 +62,7 @@ printLLVM :: AST.Module -> IO ()
 printLLVM = printLLVMOpt optNone
 
 printLLVMOpt :: Optimizer -> AST.Module -> IO ()
-printLLVMOpt opt ast = runManaged . runJIT $ do
+printLLVMOpt opt ast = runJIT $ do
   m <- moduleFromAST ast
   opt m
   s <- llvmIRFromModule m
@@ -65,7 +72,7 @@ printAssembly :: AST.Module -> IO ()
 printAssembly = printAssemblyOpt optNone
 
 printAssemblyOpt :: Optimizer -> AST.Module -> IO ()
-printAssemblyOpt opt ast = runManaged . runJIT $ do
+printAssemblyOpt opt ast = runJIT $ do
   m <- moduleFromAST ast
   opt m
   s <- assemblyFromModule m
@@ -90,8 +97,20 @@ withExecOpt opt ast = withJIT $ do
   opt m
   compile m
 
-verifyModule :: AST.Module -> IO (Either VerifyException ())
-verifyModule ast = withJIT (moduleFromAST ast) (liftIO . try . verify)
+verifyModule :: AST.Module -> IO (Either Text ())
+verifyModule ast = (Right <$> runJIT parseAndVerify) `catches`
+  [ Handler $ \ (ParseFailureException err) -> pure $ Left $! toS err
+  , Handler $ \ (VerifyException err) -> pure $ Left $! toS err
+  ]
+  where
+    parseAndVerify = do
+      ctx <- ask
+      let llvm = LazyByteString.toStrict . LazyText.encodeUtf8 $ ppllvm ast
+      m <- using $ managed $ withModuleFromLLVMAssembly ctx llvm
+      liftIO $ verify m
+
+writeModuleFile :: FilePath -> AST.Module -> IO ()
+writeModuleFile path = LazyText.writeFile path . ppllvm
 
 
 ----------------------------------------------------------------------
@@ -165,13 +184,16 @@ newtype JIT a = JIT (ReaderT Context Managed a)
     , MonadReader Context, MonadIO, MonadManaged
     )
 
-runJIT :: JIT a -> Managed a
-runJIT (JIT m) = do
+jitManaged :: JIT a -> Managed a
+jitManaged (JIT m) = do
   ctx <- using $ managed withContext
   runReaderT m ctx
 
+runJIT :: JIT () -> IO ()
+runJIT = runManaged . jitManaged
+
 withJIT :: JIT a -> (a -> IO r) -> IO r
-withJIT = with . runJIT
+withJIT = with . jitManaged
 
 moduleFromAST :: AST.Module -> JIT Module
 moduleFromAST ast = do
