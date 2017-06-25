@@ -1,8 +1,12 @@
-{-# OPTIONS_GHC -fno-warn-unused-imports #-}
-
-module Simply.Examples where
-
-import Protolude hiding (Type)
+module Simply.Examples
+  ( ex01a_factorial
+  , ex01b_factorial
+  , ex01c_factorial
+  , ex01d_factorial
+  , ex02a_higher_order
+  , ex02b_higher_order
+  , ex03_factorial_fix
+  ) where
 
 import Simply.Surface.AST
 
@@ -11,10 +15,10 @@ ex01a_factorial :: Program
 ex01a_factorial = Program
   [
     Def "factorial'" [("acc", TInt), ("n", TInt)] TInt (
-      If ("n" ==. int 0) {-then-} (
+      If ("n" ==. int 0) {-then-}
         "acc"
-      ) {-else-} (
-        "factorial'" @. [("acc" *. "n"), ("n" -. int 1)]
+      {-else-} (
+        "factorial'" @. ["acc" *. "n", "n" -. int 1]
       )
     )
   , Def "factorial" [("n", TInt)] TInt (
@@ -30,10 +34,10 @@ ex01b_factorial :: Program
 ex01b_factorial = Program
   [
     Def "factorial'" [("acc", TInt), ("n", TInt)] TInt (
-      If ("n" ==. int 0) {-then-} (
+      If ("n" ==. int 0) {-then-}
         "acc"
-      ) {-else-} (
-        "factorial'" @. [("acc" *. "n"), ("n" -. int 1)]
+      {-else-} (
+        "factorial'" @. ["acc" *. "n", "n" -. int 1]
       )
     )
   , Def "factorial" [("n", TInt)] TInt (
@@ -131,9 +135,9 @@ ex03_factorial_fix = Program
       Let "fac'" {-=-} (
         Lam [("self", TInt ->. TInt ->. TInt), ("acc", TInt), ("n", TInt)]
         {-=>-} (
-          If ("n" ==. int 0) {-then-} (
+          If ("n" ==. int 0) {-then-}
             "acc"
-          ) {-else-} (
+          {-else-} (
             "self" @. ["acc" *. "n", "n" -. int 1]
           )
         )

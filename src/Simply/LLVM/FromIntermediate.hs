@@ -45,7 +45,7 @@ llvmType (TClosure args retty) = closure (llvmType retty) (map llvmType args)
 
 
 toFunPtrType :: LLVM.Type -> LLVM.Type
-toFunPtrType ty@(FunctionType _ _ _) = ptr ty
+toFunPtrType ty@FunctionType {} = ptr ty
 toFunPtrType ty = ty
 
 

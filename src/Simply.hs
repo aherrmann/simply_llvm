@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
-module Simply where
+module Simply (module Simply) where
 
 import Protolude hiding (Type)
 

@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Main where
+module Main (main) where
 
 import Protolude
 
@@ -69,63 +69,63 @@ main = hspec $ do
 
   describe "Example.ex01a_factorial" $ do
     let prog = Example.ex01a_factorial
-    it "type-checks" $ do
+    it "type-checks" $
       Simply.checkProgram prog `shouldBe` Right ()
-    it "verifies" $ do
+    it "verifies" $
       verifyProgram prog `shouldReturn` Right ()
-    it "compiles and runs" $ do
+    it "compiles and runs" $
       run0 prog `shouldReturn` factorial 5
 
   describe "Example.ex01b_factorial" $ do
     let prog = Example.ex01b_factorial
-    it "type-checks" $ do
+    it "type-checks" $
       Simply.checkProgram prog `shouldBe` Right ()
-    it "verifies" $ do
+    it "verifies" $
       verifyProgram prog `shouldReturn` Right ()
-    it "compiles and runs" $ do
+    it "compiles and runs" $
       prog `run1` [0..7] `shouldReturn` map factorial [0..7]
 
   describe "Example.ex01c_factorial" $ do
     let prog = Example.ex01c_factorial
-    it "type-checks" $ do
+    it "type-checks" $
       Simply.checkProgram prog `shouldBe` Right ()
-    it "verifies" $ do
+    it "verifies" $
       verifyProgram prog `shouldReturn` Right ()
-    it "compiles and runs" $ do
+    it "compiles and runs" $
       run0 prog `shouldReturn` factorial 5
 
   describe "Example.ex01d_factorial" $ do
     let prog = Example.ex01d_factorial
-    it "type-checks" $ do
+    it "type-checks" $
       Simply.checkProgram prog `shouldBe` Right ()
-    it "verifies" $ do
+    it "verifies" $
       verifyProgram prog `shouldReturn` Right ()
-    it "compiles and runs" $ do
+    it "compiles and runs" $
       prog `run1` [0..7] `shouldReturn` map factorial [0..7]
 
   describe "Example.ex02a_higher_order" $ do
     let prog = Example.ex02a_higher_order
-    it "type-checks" $ do
+    it "type-checks" $
       Simply.checkProgram prog `shouldBe` Right ()
-    it "verifies" $ do
+    it "verifies" $
       verifyProgram prog `shouldReturn` Right ()
-    it "compiles and runs" $ do
+    it "compiles and runs" $
       run0 prog `shouldReturn` 7
 
   describe "Example.ex02b_higher_order" $ do
     let prog = Example.ex02b_higher_order
-    it "type-checks" $ do
+    it "type-checks" $
       Simply.checkProgram prog `shouldBe` Right ()
-    it "verifies" $ do
+    it "verifies" $
       verifyProgram prog `shouldReturn` Right ()
-    it "compiles and runs" $ do
+    it "compiles and runs" $
       prog `run1` [0..7] `shouldReturn` map (+3) [0..7]
 
   describe "Example.ex03_factorial_fix" $ do
     let prog = Example.ex03_factorial_fix
-    it "type-checks" $ do
+    it "type-checks" $
       Simply.checkProgram prog `shouldBe` Right ()
-    it "verifies" $ do
+    it "verifies" $
       verifyProgram prog `shouldReturn` Right ()
-    it "compiles and runs" $ do
+    it "compiles and runs" $
       prog `run1` [0..7] `shouldReturn` map factorial [0..7]

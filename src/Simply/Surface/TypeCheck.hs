@@ -46,6 +46,8 @@ data ErrorCode
     -- ^ expected a function but got something else
   | RecurringArgumentName [Arg]
     -- ^ an argument name appears more than once in an argument list
+  | RecurringGlobalNames [Name]
+    -- ^ these global names appear more than once
   | IllegalMainType Type
     -- ^ the main function must be a function from zero or more Int to Int
   | NoMainFunction
@@ -159,38 +161,18 @@ checkExpr ctx expr = exprErrorTrace expr $ case expr of
     unless (tyTh == tyEl) $ throwExprError_ (TypeMismatch tyTh tyEl)
     pure tyTh
 
-  BinaryOp Add a b -> do
+  BinaryOp op a b -> do
     tyA <- checkExpr ctx a
     unless (tyA == TInt) $
       throwExprError a (WrongType TInt tyA)
     tyB <- checkExpr ctx b
     unless (tyB == TInt) $
       throwExprError b (WrongType TInt tyB)
-    pure TInt
-  BinaryOp Sub a b -> do
-    tyA <- checkExpr ctx a
-    unless (tyA == TInt) $
-      throwExprError a (WrongType TInt tyA)
-    tyB <- checkExpr ctx b
-    unless (tyB == TInt) $
-      throwExprError b (WrongType TInt tyB)
-    pure TInt
-  BinaryOp Mul a b -> do
-    tyA <- checkExpr ctx a
-    unless (tyA == TInt) $
-      throwExprError a (WrongType TInt tyA)
-    tyB <- checkExpr ctx b
-    unless (tyB == TInt) $
-      throwExprError b (WrongType TInt tyB)
-    pure TInt
-  BinaryOp Eql a b -> do
-    tyA <- checkExpr ctx a
-    unless (tyA == TInt) $
-      throwExprError a (WrongType TInt tyA)
-    tyB <- checkExpr ctx b
-    unless (tyB == TInt) $
-      throwExprError b (WrongType TInt tyB)
-    pure TBool
+    case op of
+      Add -> pure TInt
+      Sub -> pure TInt
+      Mul -> pure TInt
+      Eql -> pure TBool
 
   App f x -> do
     fty <- checkExpr ctx f
@@ -225,9 +207,11 @@ checkGlobal ctx (Def name args retty body) = do
 
 checkProgram :: Program -> Either ProgramError ()
 checkProgram (Program globals) = do
+  unless (null multiNames) $
+    Left $! ProgramError $ RecurringGlobalNames multiNames
   _ <- catchProgramGlobalError $ traverse (checkGlobal ctx) globals
   case Map.lookup "main" ctx of
-    Nothing -> Left $! ProgramError $ NoMainFunction
+    Nothing -> Left $! ProgramError NoMainFunction
     Just mainty
       | (args, ret) <- unfoldTArr mainty
       , all (==TInt) args && ret == TInt
@@ -236,6 +220,12 @@ checkProgram (Program globals) = do
       -> Left $! ProgramError $ IllegalMainType mainty
   where
     ctx = Map.fromList $ map (globalName &&& globalType) globals
+    multiNames = globals
+      & map globalName
+      & foldl' insert Map.empty
+      & Map.filter (>1)
+      & Map.keys
+    insert m n = Map.insertWith (+) n (1::Int) m
 
 
 ----------------------------------------------------------------------

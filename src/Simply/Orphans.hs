@@ -1,8 +1,5 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE StandaloneDeriving #-}
 
 module Simply.Orphans () where
 

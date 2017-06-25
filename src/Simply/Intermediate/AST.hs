@@ -95,7 +95,7 @@ data Global
 
 
 -- | the program
-data Program
+newtype Program
   = Program [Global]
     -- ^ A program is a list of global definitions and a main function.
     -- We specify the return type explicitly.

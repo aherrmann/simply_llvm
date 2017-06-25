@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Simply.LLVM.JIT
   ( printLLVM
   , printLLVMOpt
@@ -220,5 +218,5 @@ compile m = do
   engine <- using $ managed (withMCJIT ctx optlevel model framePtrElim fastInstr)
   bin <- using $ managed (withModuleInEngine engine m)
   mbMainFun <- liftIO $ getFunction bin (AST.Name "main")
-  mainFun <- maybe (throwIO $ MissingEntryPoint) pure mbMainFun
-  pure $! \ args -> callFFI mainFun retInt32 (map argInt32 args)
+  mainFun <- maybe (throwIO MissingEntryPoint) pure mbMainFun
+  pure (callFFI mainFun retInt32 . map argInt32)

@@ -156,7 +156,7 @@ data Global
 
 
 -- | the program
-data Program
+newtype Program
   = Program [Global]
     -- ^ a program is a list of global definitions including the main function.
     --
@@ -227,22 +227,22 @@ eql = Lam [("a", TInt), ("b", TInt)] (BinaryOp Eql (Var "a") (Var "b"))
 
 -- | primitive addition
 (+.) :: Expr -> Expr -> Expr
-(+.) a b = BinaryOp Add a b
+(+.) = BinaryOp Add
 infixl 6 +.
 
 -- | primitive subtraction
 (-.) :: Expr -> Expr -> Expr
-(-.) a b = BinaryOp Sub a b
+(-.) = BinaryOp Sub
 infixl 6 -.
 
 -- | primitive multiplication
 (*.) :: Expr -> Expr -> Expr
-(*.) a b = BinaryOp Mul a b
+(*.) = BinaryOp Mul
 infixl 7 *.
 
 -- | primitive equality comparison
 (==.) :: Expr -> Expr -> Expr
-(==.) a b = BinaryOp Eql a b
+(==.) = BinaryOp Eql
 infix 4 ==.
 
 -- | function appliciation
@@ -310,35 +310,35 @@ unfoldApp = go []
 substitute :: (Name, Expr) -> Expr -> Expr
 substitute (name, subst) = \case
 
-    Lit lit -> Lit lit
+  Lit lit -> Lit lit
 
-    Var name'
-      | name' == name -> subst
-      | otherwise -> Var name'
+  Var name'
+    | name' == name -> subst
+    | otherwise -> Var name'
 
-    Let name' bound body ->
-      let
-        bound' = recurse bound
-        body'
-          | name' /= name = recurse body
-          | otherwise = body
-      in
-      Let name' bound' body'
+  Let name' bound body ->
+    let
+      bound' = recurse bound
+      body'
+        | name' /= name = recurse body
+        | otherwise = body
+    in
+    Let name' bound' body'
 
-    If cond then_ else_ ->
-      If (recurse cond) (recurse then_) (recurse else_)
+  If cond then_ else_ ->
+    If (recurse cond) (recurse then_) (recurse else_)
 
-    BinaryOp op a b ->
-      BinaryOp op (recurse a) (recurse b)
+  BinaryOp op a b ->
+    BinaryOp op (recurse a) (recurse b)
 
-    App f a ->
-      App (recurse f) (recurse a)
+  App f a ->
+    App (recurse f) (recurse a)
 
-    Lam arglist body
-      | name `notElem` [ argname | (argname, _) <- arglist ]
-      -> Lam arglist (recurse body)
-      | otherwise
-      -> Lam arglist body
+  Lam arglist body
+    | name `notElem` [ argname | (argname, _) <- arglist ]
+    -> Lam arglist (recurse body)
+    | otherwise
+    -> Lam arglist body
 
   where
     recurse = substitute (name, subst)
@@ -363,7 +363,7 @@ step = \case
     flip (BinaryOp op) b <$> step a
     <|> BinaryOp op a <$> step b
   App f a ->
-    (flip App) a <$> step f
+    flip App a <$> step f
     <|> App f <$> step a
     <|> apply f a
   Lam _ _ -> Nothing

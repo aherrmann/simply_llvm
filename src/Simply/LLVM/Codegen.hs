@@ -229,7 +229,7 @@ enumerateUnnames l = snd $ execState (traverse_ enumBlock l) (0, Map.empty)
       -- map name to current counter
       modify $ second $ Map.insert n n'
       -- increment counter
-      modify $ first $ succ
+      modify $ first succ
 
 renameUnnames :: [BasicBlock] -> Map.Map Word Word -> [BasicBlock]
 renameUnnames l m = map renameBlock l
@@ -268,50 +268,50 @@ renameUnnames l m = map renameBlock l
 
     renameInstr :: Instruction -> Instruction
     renameInstr = \case
-      ins@(Add {..}) -> ins
+      ins@Add {..} -> ins
         { operand0 = renameOp operand0
         , operand1 = renameOp operand1
         }
-      ins@(Sub {..}) -> ins
+      ins@Sub {..} -> ins
         { operand0 = renameOp operand0
         , operand1 = renameOp operand1
         }
-      ins@(Mul {..}) -> ins
+      ins@Mul {..} -> ins
         { operand0 = renameOp operand0
         , operand1 = renameOp operand1
         }
-      ins@(Alloca {..}) -> ins
+      ins@Alloca {..} -> ins
         { numElements = renameOp <$> numElements }
-      ins@(Load {..}) -> ins
+      ins@Load {..} -> ins
         { address = renameOp address
         }
-      ins@(Store {..}) -> ins
+      ins@Store {..} -> ins
         { address = renameOp address
         , value = renameOp value
         }
-      ins@(GetElementPtr {..}) -> ins
+      ins@GetElementPtr {..} -> ins
         { address = renameOp address
         , indices = renameOp <$> indices
         }
-      ins@(PtrToInt {..}) -> ins
+      ins@PtrToInt {..} -> ins
         { operand0 = renameOp operand0 }
-      ins@(IntToPtr {..}) -> ins
+      ins@IntToPtr {..} -> ins
         { operand0 = renameOp operand0 }
-      ins@(BitCast {..}) -> ins
+      ins@BitCast {..} -> ins
         { operand0 = renameOp operand0 }
-      ins@(ICmp {..}) -> ins
+      ins@ICmp {..} -> ins
         { operand0 = renameOp operand0
         , operand1 = renameOp operand1
         }
-      ins@(Phi {..}) -> ins
+      ins@Phi {..} -> ins
         { incomingValues = [ (renameOp op, renameName n) | (op, n) <- incomingValues ] }
-      ins@(Call {..}) -> ins
+      ins@Call {..} -> ins
         { function = renameOp <$> function
         , arguments = [ (renameOp op, attrs) | (op, attrs) <- arguments ]
         }
-      ins@(ExtractValue {..}) -> ins
+      ins@ExtractValue {..} -> ins
         { aggregate = renameOp aggregate }
-      ins@(InsertValue {..}) -> ins
+      ins@InsertValue {..} -> ins
         { aggregate = renameOp aggregate
         , element = renameOp element
         }

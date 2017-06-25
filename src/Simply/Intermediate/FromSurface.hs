@@ -1,5 +1,3 @@
-{-# LANGUAGE TupleSections #-}
-
 module Simply.Intermediate.FromSurface
   ( fromSurface
   ) where
@@ -221,8 +219,10 @@ convert as expr =
 transfExpr :: Surface.Expr -> Transform Intermediate.Expr
 transfExpr = \case
 
-  Surface.Lit l@(LInt _) -> pure $! Intermediate.Lit Intermediate.TInt l
-  Surface.Lit l@(LBool _) -> pure $! Intermediate.Lit Intermediate.TBool l
+  Surface.Lit lit@(LInt _) ->
+    pure $! Intermediate.Lit Intermediate.TInt lit
+  Surface.Lit lit@(LBool _) ->
+    pure $! Intermediate.Lit Intermediate.TBool lit
 
   Surface.Var name -> do
     var <- lookup name
@@ -230,25 +230,25 @@ transfExpr = \case
       LocalVar  type_ -> pure $ Intermediate.Var type_ name
       GlobalVar type_ -> pure $ Intermediate.Global type_ name
 
-  Surface.Let name e ein -> do
-    e' <- transfExpr e
-    let ty = Intermediate.exprType e'
-    ein' <- with [(name, ty)] $ transfExpr ein
-    let inty = Intermediate.exprType ein'
-    pure $! Intermediate.Let inty name e' ein'
+  Surface.Let name bound body -> do
+    bound' <- transfExpr bound
+    let boundty = Intermediate.exprType bound'
+    body' <- with [(name, boundty)] $ transfExpr body
+    let bodyty = Intermediate.exprType body'
+    pure $! Intermediate.Let bodyty name bound' body'
 
-  Surface.If cond th el -> do
+  Surface.If cond then_ else_ -> do
     cond' <- convert Intermediate.TBool =<< transfExpr cond
-    (th', el') <- join $ promote <$> transfExpr th <*> transfExpr el
-    pure $! Intermediate.If (Intermediate.exprType th') cond' th' el'
+    (then', else') <- join $ promote <$> transfExpr then_ <*> transfExpr else_
+    pure $! Intermediate.If (Intermediate.exprType then') cond' then' else'
 
   Surface.BinaryOp op a b -> do
-    let
-      ty = case op of
-        Add -> Intermediate.TInt
-        Sub -> Intermediate.TInt
-        Mul -> Intermediate.TInt
-        Eql -> Intermediate.TBool
+    let ty =
+          case op of
+            Add -> Intermediate.TInt
+            Sub -> Intermediate.TInt
+            Mul -> Intermediate.TInt
+            Eql -> Intermediate.TBool
     a' <- convert Intermediate.TInt =<< transfExpr a
     b' <- convert Intermediate.TInt =<< transfExpr b
     pure $! Intermediate.BinaryOp ty op a' b'
@@ -310,8 +310,8 @@ partialCall f given = do
 transfGlobal :: Surface.Global -> Transform Intermediate.Global
 transfGlobal (Surface.Def name arglist retty body) = do
   let
-    arglist' = map (second (transfType)) arglist
-    retty' = transfType $ retty
+    arglist' = map (second transfType) arglist
+    retty' = transfType retty
   body' <- with arglist' $ convert retty' =<< transfExpr body
   pure $! Intermediate.DefFunction name arglist' retty' body'
 

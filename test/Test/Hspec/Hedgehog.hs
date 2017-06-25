@@ -50,7 +50,7 @@ instance Hspec.Example NamedProperty where
         pure $! Hspec.Failure Nothing $! Hspec.Reason reason
       Hedgehog.Failed failure -> do
         let
-          location = fmap spanToLoc $ Hedgehog.failureLocation failure
+          location = spanToLoc <$> Hedgehog.failureLocation failure
           spanToLoc span = Hspec.Location
             { Hspec.locationFile = Hedgehog.spanFile span
             , Hspec.locationLine = Hedgehog.unLineNo . Hedgehog.spanStartLine $ span

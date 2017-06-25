@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
-module Main where
+module Main (module Main) where
 
 import Protolude
 

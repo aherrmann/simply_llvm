@@ -41,14 +41,14 @@ genProgram = Gen.shrink shrinkProgram $ do
     genMainSignature = do
       numargs <- Gen.int (Range.linear 0 10)
       arglist <- genArglistFor (replicate numargs TInt)
-      pure $! ("main", (arglist, TInt))
+      pure ("main", (arglist, TInt))
 
     genSignature = do
       name <- genName
       argtys <- Gen.list (Range.linear 0 10) genFreshType
       arglist <- genArglistFor argtys
       retty <- genFreshType
-      pure $! (name, (arglist, retty))
+      pure (name, (arglist, retty))
 
     typeFromSignature (arglist, retty) =
       foldr TArr retty [ t | (_, t) <- arglist ]
@@ -116,7 +116,7 @@ mbGenBinaryOp _ _ = Nothing
 genApp :: Monad m => Type -> Context -> Gen m Expr
 genApp ty context = do
   (fun, argtys) <- genFunctionReturning ty context
-  args <- traverse (flip genExpr context) argtys
+  args <- traverse (`genExpr` context) argtys
   pure $! List.foldl' App fun args
 
 genFunctionReturning :: Monad m => Type -> Context -> Gen m (Expr, [Type])
@@ -130,7 +130,7 @@ genFreshFunctionReturning ty context = do
   argtys <- Gen.list (Range.linear 1 5) (genType context)
   let funty = List.foldr TArr ty argtys
   fun <- genExpr funty context
-  pure $! (fun, argtys)
+  pure (fun, argtys)
 
 mbGenKnownFunctionReturning :: Monad m => Type -> Context -> Maybe (Gen m (Expr, [Type]))
 mbGenKnownFunctionReturning ty context
@@ -165,7 +165,7 @@ mbGenLam ty context
 
 genName :: Monad m => Gen m Name
 genName =
-  Gen.filter (not . (=="main"))
+  Gen.filter (/="main")
   $ Text.cons <$> start <*> rest
   where
     start = Gen.lower
@@ -219,6 +219,6 @@ shrinkProgram (Program globals) = do
   pure $! Program globals''
   where
     picks [] = []
-    picks (x:xs) = [(x, xs)] ++ [(y, x:ys) | (y, ys) <- picks xs]
+    picks (x:xs) = (x, xs) : [(y, x:ys) | (y, ys) <- picks xs]
     substituteDef subst (Def defname arglist retty body)
       = Def defname arglist retty (substitute subst body)
