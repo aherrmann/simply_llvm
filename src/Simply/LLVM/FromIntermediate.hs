@@ -9,7 +9,6 @@ import Data.List (zip3)
 
 import LLVM.AST.Type
 import qualified LLVM.AST as LLVM
-import qualified LLVM.AST.Constant as LLVM
 import qualified LLVM.AST.IntegerPredicate as IP
 
 import Simply.Intermediate.AST as Intermediate
@@ -40,24 +39,8 @@ fromIntermediate prog = runLLVM initModule (codegenProg prog)
 llvmType :: Intermediate.Type -> LLVM.Type
 llvmType TInt = int
 llvmType TBool = ibool
-llvmType (TFunction args retty) = fn (llvmType retty) (map llvmType args)
+llvmType (TFunction args retty) = ptr $ fn (llvmType retty) (map llvmType args)
 llvmType (TClosure args retty) = closure (llvmType retty) (map llvmType args)
-
-
-toFunPtrType :: LLVM.Type -> LLVM.Type
-toFunPtrType ty@FunctionType {} = ptr ty
-toFunPtrType ty = ty
-
-
-llvmValueType :: Intermediate.Type -> LLVM.Type
-llvmValueType = toFunPtrType . llvmType
-
-
-toFunPtr :: LLVM.Operand -> LLVM.Operand
-toFunPtr (LLVM.LocalReference ty n) = LLVM.LocalReference (toFunPtrType ty) n
-toFunPtr (LLVM.ConstantOperand (LLVM.GlobalReference ty n)) =
-  LLVM.ConstantOperand (LLVM.GlobalReference (toFunPtrType ty) n)
-toFunPtr op = op
 
 
 -- | Transform an IR expression to LLVM.
@@ -109,7 +92,7 @@ codegenExpr expr = case expr of
     -- if.exit
     ------------------
     _ <- setBlock ifexit
-    phi (llvmValueType ty) [(then', ifthen'), (else', ifelse')]
+    phi (llvmType ty) [(then', ifthen'), (else', ifelse')]
 
   BinaryOp TInt Add a b ->
     join $! add <$> codegenExpr a <*> codegenExpr b
@@ -147,12 +130,12 @@ codegenExpr expr = case expr of
       if null env then
         pure $! nullP anyPtr
       else do
-        let envtys' = map (llvmValueType . exprType) env
+        let envtys' = map (llvmType . exprType) env
         env' <- traverse codegenExpr env
         (anyptr, envptr) <- malloc (closureEnv envtys')
         forM_ (zip3 [0..] envtys' env') $ \(i, ty, v) -> do
           p <- getElementPtr (ptr ty) envptr [cint32 0, cint32 i]
-          store p (toFunPtr v)
+          store p v
         pure $! anyptr
     let
       retty' = llvmType retty
@@ -178,7 +161,7 @@ codegenGlobal (DefFunction name args retty body) = do
     codegenBody args' body
 codegenGlobal (DefClosure name env args retty body) = do
   let
-    env' = map (swap . first (LLVM.Name . toS) . second llvmValueType) env
+    env' = map (swap . first (LLVM.Name . toS) . second llvmType) env
     args' = map (swap . first (LLVM.Name . toS) . second llvmType) args
     retty' = llvmType retty
     envname = "__env"

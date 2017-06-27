@@ -12,15 +12,15 @@ let
   llvm-hs-repo = pkgs.fetchFromGitHub {
     owner = "llvm-hs";
     repo = "llvm-hs";
-    rev = "76cd4d5107862401a7ebbe1bb9cc1cf172fa1d66";
-    sha256 = "0bnh0yyjflhvc8vjrqsa25k7issnvkvgx149bnq7avka5mx2m99m";
+    rev = "4f11240a630fb0be7f250f9926dd8fdbedb121c3";
+    sha256 = "12lmv2vrsyc1ynfy2cvc2miqn6izzacackygg1zid82jcpi10xmj";
   };
 
   llvm-hs-pretty-repo = pkgs.fetchFromGitHub {
     owner = "llvm-hs";
     repo = "llvm-hs-pretty";
-    rev = "aeed01e4abc8d28ec1c0b681b55ebc4d0a15d5df";
-    sha256 = "0bblf21jwii2h61g46zgdrw5s0yxjj24m42d0akfp92x8y7yjcnw";
+    rev = "bb56f12e348aa1e19ec6111cecd200d4e0ffced9";
+    sha256 = "1zfgmnxygi3gchd06zg4ar3l2nf94jkv73h2ahklzscvlbg7lmkj";
   };
 
   overlay = self: super: with self; {

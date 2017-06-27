@@ -538,7 +538,7 @@ alloca ty = instr ty $ Alloca ty Nothing 0 []
 malloc :: Type -> Codegen (Operand, Operand)
 malloc ty = do
   size <- sizeof ty
-  anyP <- ccall anyPtr (cons $ global (fn anyPtr [i32]) "malloc") [size]
+  anyP <- ccall anyPtr (cons $ global (ptr $ fn anyPtr [i32]) "malloc") [size]
   valP <- bitcast (ptr ty) anyP
   pure (anyP, valP)
 
